@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Last Jump</title>
+    <meta name="author" content="FrigOfFury">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <header id="game-header">
+            <h1>The Last Jump</h1>
+            <div id="status-bar">
+                <span id="time-display">Week 1</span>
+                <span id="actions-display">Actions: 3/3</span>
+            </div>
+        </header>
+
+        <main id="game-main">
+            <section id="narrative-panel">
+                <div id="story-text"></div>
+            </section>
+
+            <section id="choices-panel">
+                <div id="choices-container"></div>
+            </section>
+        </main>
+
+        <aside id="game-sidebar">
+            <div id="stats-panel">
+                <h2>Stats</h2>
+                <ul id="stats-list"></ul>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Config & Definitions -->
+    <script src="data/config.js"></script>
+    <script src="data/stats.js"></script>
+
+    <!-- Templates -->
+    <script src="data/templates/characters.js"></script>
+    <script src="data/templates/objects.js"></script>
+
+    <!-- Content -->
+    <script src="data/events/events.js"></script>
+    <script src="data/stories/stories.js"></script>
+
+    <!-- Engine -->
+    <script src="js/game.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
