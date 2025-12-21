@@ -1,14 +1,35 @@
-/* The Last Jump - Game Engine - by FrigOfFury */
+/* The Last Jump - Game Engine - by FrigOfFury
+ *
+ * Central game engine managing state, entities, and the main game loop.
+ *
+ * Main game loop (triggered after actions and at week end):
+ *   1. evaluateEvents() - check for triggered events, run highest priority
+ *   2. evaluateStorylines() - check each storyline for chapter advancement
+ *   3. refreshDisplay() - collect narrative text, available actions, render UI
+ *
+ * Key concepts:
+ *   - Characters and Objects are instances created from templates
+ *   - Player is just a character with id stored in state.playerId
+ *   - Storylines track current chapter and whether text has been shown
+ *   - Actions are collected based on conditions and rendered as buttons
+ *   - Flags drive storyline advancement and action availability
+ */
 
 const Game = {
     state: null,
     nextId: 1,
+
+    // Controllable randomness for testing - override this to inject deterministic values
+    random() {
+        return Math.random();
+    },
 
     // Initialize new game
     init() {
         this.state = {
             week: 1,
             actionsRemaining: Config.actionsPerPeriod,
+            jumpCount: 0,
             playerId: null,
             characters: {},
             objects: {},
@@ -17,8 +38,9 @@ const Game = {
             flags: {}
         };
         this.state.playerId = this.createCharacter('player', 'You');
-        this.enterStory(Config.initialStory, Config.initialChapter);
-        this.updateUI();
+        this.enterStory(Config.initialStory);
+        this.evaluateStorylines();
+        this.refreshDisplay();
     },
 
     // === ID Generation ===
@@ -58,10 +80,18 @@ const Game = {
             templateType,
             name,
             stats,
+            gender: template?.gender || null,
             inventory: [],
             flags: {}
         };
         return id;
+    },
+
+    setCharacterGender(charId, gender) {
+        const char = this.getCharacter(charId);
+        if (char && Genders.includes(gender)) {
+            char.gender = gender;
+        }
     },
 
     getCharacter(id) {
@@ -192,13 +222,15 @@ const Game = {
         this.state.week++;
         this.state.actionsRemaining = Config.actionsPerPeriod;
         this.evaluateEvents();
-        this.updateUI();
+        this.evaluateStorylines();
+        this.refreshDisplay();
     },
 
     useAction(cost = 1) {
         this.state.actionsRemaining -= cost;
         this.evaluateEvents();
-        this.updateUI();
+        this.evaluateStorylines();
+        this.refreshDisplay();
     },
 
     // === Events ===
@@ -207,7 +239,7 @@ const Game = {
         for (const [id, event] of Object.entries(Events)) {
             if (this.state.completedEvents.includes(id)) continue;
             if (!this.checkEventConditions(event.conditions)) continue;
-            if (event.probability < 1 && Math.random() > event.probability) continue;
+            if (event.probability < 1 && this.random() > event.probability) continue;
             eligible.push({ id, event });
         }
         if (eligible.length === 0) return;
@@ -255,18 +287,133 @@ const Game = {
     },
 
     // === Stories ===
-    enterStory(storyId, chapterId) {
-        this.state.storylines[storyId] = { currentChapter: chapterId };
-        this.loadChapter(storyId, chapterId);
+    // Storylines are narrative arcs that can be active simultaneously.
+    // Each tracks its current chapter and whether its text has been shown.
+    // Chapters auto-advance when their advanceWhen conditions are met.
+    // Text display is controlled by showText: 'onEnter' (once) or 'always'.
+
+    enterStory(storyId) {
+        const story = Stories[storyId];
+        if (!story) return;
+        const initialChapter = story.initialChapter || Object.keys(story.chapters)[0];
+        this.state.storylines[storyId] = {
+            currentChapter: initialChapter,
+            enteredChapter: true  // Flag that we just entered this chapter
+        };
     },
 
-    loadChapter(storyId, chapterId) {
-        const story = Stories[storyId];
-        const chapter = story?.chapters?.[chapterId];
-        if (!chapter) return;
+    advanceChapter(storyId, chapterId) {
+        if (!this.state.storylines[storyId]) return;
         this.state.storylines[storyId].currentChapter = chapterId;
-        this.renderStory(chapter.text);
-        this.renderChoices(chapter.choices);
+        this.state.storylines[storyId].enteredChapter = true;
+    },
+
+    evaluateStorylines() {
+        // Check each storyline for chapter advancement
+        for (const [storyId, storylineState] of Object.entries(this.state.storylines)) {
+            const story = Stories[storyId];
+            if (!story) continue;
+
+            const chapter = story.chapters[storylineState.currentChapter];
+            if (!chapter) continue;
+
+            // Check if chapter should advance
+            if (chapter.advanceWhen && chapter.advanceTo) {
+                if (this.checkStorylineConditions(chapter.advanceWhen)) {
+                    this.advanceChapter(storyId, chapter.advanceTo);
+                }
+            }
+        }
+    },
+
+    collectNarrativeText() {
+        const texts = [];
+
+        for (const [storyId, storylineState] of Object.entries(this.state.storylines)) {
+            const story = Stories[storyId];
+            if (!story) continue;
+
+            const chapter = story.chapters[storylineState.currentChapter];
+            if (!chapter || !chapter.text) continue;
+
+            // Show text if: just entered chapter (onEnter), or always
+            if (storylineState.enteredChapter && chapter.showText === 'onEnter') {
+                texts.push(chapter.text);
+            } else if (chapter.showText === 'always') {
+                texts.push(chapter.text);
+            }
+        }
+
+        // Clear enteredChapter flags after collecting text
+        for (const storyId of Object.keys(this.state.storylines)) {
+            this.state.storylines[storyId].enteredChapter = false;
+        }
+
+        return texts;
+    },
+
+    checkStorylineConditions(conditions) {
+        if (!conditions) return true;
+        if (conditions.hasFlag && !this.hasFlag(conditions.hasFlag)) return false;
+        if (conditions.minWeek && this.state.week < conditions.minWeek) return false;
+        return true;
+    },
+
+    // === Actions ===
+    // Actions are things the player can do, defined in data/actions.js.
+    // They're collected based on conditions (storyline state, flags, etc.)
+    // and rendered as buttons. Actions set flags/stats; storylines react.
+
+    collectAvailableActions() {
+        const available = [];
+        for (const [id, action] of Object.entries(Actions)) {
+            if (this.checkActionConditions(action.conditions)) {
+                available.push(action);
+            }
+        }
+        return available;
+    },
+
+    checkActionConditions(conditions) {
+        if (!conditions) return true;
+
+        if (conditions.inChapter) {
+            for (const [storyId, requiredChapter] of Object.entries(conditions.inChapter)) {
+                const storylineState = this.state.storylines[storyId];
+                if (!storylineState || storylineState.currentChapter !== requiredChapter) {
+                    return false;
+                }
+            }
+        }
+
+        if (conditions.hasFlag && !this.hasFlag(conditions.hasFlag)) return false;
+        if (conditions.notFlag && this.hasFlag(conditions.notFlag)) return false;
+
+        return true;
+    },
+
+    executeAction(action) {
+        if (action.actionCost) {
+            this.state.actionsRemaining -= action.actionCost;
+        }
+        if (action.onSelect) {
+            action.onSelect(this);
+        } else {
+            this.evaluateEvents();
+            this.evaluateStorylines();
+            this.refreshDisplay();
+        }
+    },
+
+    refreshDisplay() {
+        // Always update narrative area (clears stale text when nothing to show)
+        const narrativeTexts = this.collectNarrativeText();
+        this.renderStory(narrativeTexts.join('\n\n'));
+
+        const actions = this.collectAvailableActions();
+        this.renderActions(actions);
+
+        this.updateUI();
     },
 
     // === Save/Load ===
@@ -322,10 +469,64 @@ const Game = {
         }
     },
 
+    renderActions(actions) {
+        const container = document.getElementById('choices-container');
+        container.innerHTML = '';
+
+        for (const action of actions) {
+            const btn = document.createElement('button');
+            btn.className = 'choice-btn';
+            btn.textContent = action.text;
+            if (action.actionCost) {
+                btn.textContent += ` [${action.actionCost} action${action.actionCost > 1 ? 's' : ''}]`;
+                btn.disabled = this.state.actionsRemaining < action.actionCost;
+            }
+            btn.addEventListener('click', () => this.executeAction(action));
+            container.appendChild(btn);
+        }
+
+        if (this.state.actionsRemaining === 0) {
+            const endBtn = document.createElement('button');
+            endBtn.className = 'choice-btn';
+            endBtn.textContent = `End ${Config.timeUnit}`;
+            endBtn.addEventListener('click', () => this.endWeek());
+            container.appendChild(endBtn);
+        }
+    },
+
     handleChoice(choice) {
         if (choice.actionCost) this.useAction(choice.actionCost);
         if (choice.effects) choice.effects(this);
-        if (choice.action === 'dismiss') {
+
+        if (choice.action === 'startCreation') {
+            const choiceSet = CreationChoiceSets[choice.creationChoices] || [];
+            const nextChapter = choice.next;
+            CharacterCreation.start(this.state.playerId, choiceSet, {
+                onComplete: () => {
+                    if (nextChapter) {
+                        const storyId = Object.keys(this.state.storylines)[0];
+                        if (storyId) this.loadChapter(storyId, nextChapter);
+                    }
+                    this.updateUI();
+                }
+            });
+        } else if (choice.action === 'createNpcAcquaintance') {
+            // Create NPC and run creation flow
+            const npcId = this.createCharacter('human', 'Acquaintance');
+            const choiceSet = CreationChoiceSets[choice.creationChoices] || [];
+            const nextChapter = choice.next;
+            CharacterCreation.start(npcId, choiceSet, {
+                createAcquaintanceFor: this.state.playerId,
+                reverseAcquaintance: choice.reverseAcquaintance || false,
+                onComplete: () => {
+                    if (nextChapter) {
+                        const storyId = Object.keys(this.state.storylines)[0];
+                        if (storyId) this.loadChapter(storyId, nextChapter);
+                    }
+                    this.updateUI();
+                }
+            });
+        } else if (choice.action === 'dismiss') {
             const storyId = Object.keys(this.state.storylines)[0];
             if (storyId) {
                 this.loadChapter(storyId, this.state.storylines[storyId].currentChapter);

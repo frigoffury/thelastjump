@@ -2,7 +2,7 @@
 
 // Define stats and their defaults here
 const StatDefinitions = {
-    health: { displayName: 'Health', default: 100, min: 0, max: 100 },
+    health: { displayName: 'Health', default: 50, min: 0, max: 200 },
     money: { displayName: 'Money', default: 50, min: 0, max: null }
     // Add more stats as needed
 };

@@ -101,6 +101,22 @@ body {
     cursor: not-allowed;
 }
 
+.creation-input {
+    background: #0f3460;
+    border: 1px solid #e94560;
+    color: #eee;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 1rem;
+    width: 100%;
+}
+
+.creation-input:focus {
+    outline: none;
+    border-color: #fff;
+}
+
 #game-sidebar {
     background: #16213e;
     padding: 1rem;
