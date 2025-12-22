@@ -1,0 +1,13 @@
+{
+    "rentDue": {
+        "id": "rentDue",
+        "priority": 80,
+        "probability": 1.0,
+        "conditions": {
+            "weekDivisibleBy": 4,
+            "hasObjectOfType": "home"
+        },
+        "handler": "processRentPayments",
+        "onSuperseded": "reschedule"
+    }
+}

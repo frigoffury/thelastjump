@@ -43,15 +43,17 @@
     <script src="data/templates/characters.js"></script>
     <script src="data/templates/objects.js"></script>
 
-    <!-- Content -->
-    <script src="data/events/events.js"></script>
-    <script src="data/stories/stories.js"></script>
+    <!-- Content (JS files with logic) -->
     <script src="data/creation-choices.js"></script>
-    <script src="data/actions.js"></script>
 
     <!-- Engine -->
+    <script src="js/text-interpolation.js"></script>
+    <script src="js/condition-checker.js"></script>
+    <script src="js/effect-executor.js"></script>
+    <script src="js/handlers.js"></script>
     <script src="js/character-creation.js"></script>
     <script src="js/game.js"></script>
     <script src="js/main.js"></script>
+    <!-- Note: Actions, Events, Stories loaded as JSON in main.js -->
 </body>
 </html>

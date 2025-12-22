@@ -223,24 +223,34 @@ function loadGameFiles() {
         Events: null,
         Stories: null,
         Game: null,
-        CharacterCreation: null
+        CharacterCreation: null,
+        TextInterpolation: null,
+        ConditionChecker: null,
+        EffectExecutor: null,
+        Handlers: null
     });
 
-    // Files must be loaded in dependency order
+    const basePath = path.join(__dirname, '..');
+
+    // Load JSON data files
+    context.Actions = JSON.parse(fs.readFileSync(path.join(basePath, 'data/actions.json'), 'utf8'));
+    context.Events = JSON.parse(fs.readFileSync(path.join(basePath, 'data/events/events.json'), 'utf8'));
+    context.Stories = JSON.parse(fs.readFileSync(path.join(basePath, 'data/stories/stories.json'), 'utf8'));
+
+    // JS files must be loaded in dependency order
     const files = [
         'data/config.js',
         'data/stats.js',
         'data/templates/characters.js',
         'data/templates/objects.js',
         'data/creation-choices.js',
-        'data/actions.js',
-        'data/events/events.js',
-        'data/stories/stories.js',
-        'js/game.js',
-        'js/character-creation.js'
+        'js/text-interpolation.js',
+        'js/condition-checker.js',
+        'js/effect-executor.js',
+        'js/handlers.js',
+        'js/character-creation.js',
+        'js/game.js'
     ];
-
-    const basePath = path.join(__dirname, '..');
 
     for (const file of files) {
         const filePath = path.join(basePath, file);
@@ -380,6 +390,96 @@ function runTests() {
 
         const health = Game.getStat(Game.state.playerId, 'health');
         t.assertEqual(health, 50, 'Should not get health bonus (random failed)');
+    });
+
+    // === Text Interpolation Tests ===
+    const TextInterpolation = context.TextInterpolation;
+
+    harness.runTest('TextInterpolation: basic pronoun substitution', (t) => {
+        const result = TextInterpolation.interpolate(
+            '[char:subject] runs.',
+            { char: { gender: 'female' } }
+        );
+        t.assertEqual(result, 'she runs.', 'Should substitute female pronoun');
+    });
+
+    harness.runTest('TextInterpolation: capitalization preserved', (t) => {
+        const result = TextInterpolation.interpolate(
+            '[char:Subject] runs. [char:SUBJECT] RUNS.',
+            { char: { gender: 'male' } }
+        );
+        t.assertEqual(result, 'He runs. HE RUNS.', 'Should preserve capitalization');
+    });
+
+    harness.runTest('TextInterpolation: all pronoun types', (t) => {
+        const result = TextInterpolation.interpolate(
+            '[c:subject] saw [c:reflexive] in the mirror. [c:possessive] reflection stared back at [c:object].',
+            { c: { gender: 'female' } }
+        );
+        t.assertEqual(
+            result,
+            'she saw herself in the mirror. her reflection stared back at her.',
+            'Should handle all pronoun types'
+        );
+    });
+
+    harness.runTest('TextInterpolation: nonbinary pronouns', (t) => {
+        const result = TextInterpolation.interpolate(
+            '[char:Subject] took [char:possessive] bag.',
+            { char: { gender: 'nonbinary' } }
+        );
+        t.assertEqual(result, 'They took their bag.', 'Should use they/their for nonbinary');
+    });
+
+    harness.runTest('TextInterpolation: verb conjugation singular', (t) => {
+        const result = TextInterpolation.interpolate(
+            '[char:Subject] {char:run/runs} fast.',
+            { char: { gender: 'female' } }
+        );
+        t.assertEqual(result, 'She runs fast.', 'Should use singular verb for she');
+    });
+
+    harness.runTest('TextInterpolation: verb conjugation plural', (t) => {
+        const result = TextInterpolation.interpolate(
+            '[char:Subject] {char:run/runs} fast.',
+            { char: { gender: 'nonbinary' } }
+        );
+        t.assertEqual(result, 'They run fast.', 'Should use plural verb for they');
+    });
+
+    harness.runTest('TextInterpolation: property access', (t) => {
+        const result = TextInterpolation.interpolate(
+            '[char.name] wields [char.weapon.name].',
+            { char: { name: 'Alice', weapon: { name: 'a sword' } } }
+        );
+        t.assertEqual(result, 'Alice wields a sword.', 'Should access nested properties');
+    });
+
+    harness.runTest('TextInterpolation: fallback for missing property', (t) => {
+        const result = TextInterpolation.interpolate(
+            '[char.name] wields [char.weapon.name|bare fists].',
+            { char: { name: 'Bob', weapon: null } }
+        );
+        t.assertEqual(result, 'Bob wields bare fists.', 'Should use fallback');
+    });
+
+    harness.runTest('TextInterpolation: full sentence with all features', (t) => {
+        const result = TextInterpolation.interpolate(
+            '[player:Subject] {player:swing/swings} [player:possessive] [player.weapon.name|fists] at [target.name].',
+            {
+                player: { gender: 'male', weapon: { name: 'axe' } },
+                target: { name: 'the goblin' }
+            }
+        );
+        t.assertEqual(result, 'He swings his axe at the goblin.', 'Should handle complex template');
+    });
+
+    harness.runTest('TextInterpolation: defaults to nonbinary for unknown gender', (t) => {
+        const result = TextInterpolation.interpolate(
+            '[char:Subject] {char:walk/walks}.',
+            { char: { gender: null } }
+        );
+        t.assertEqual(result, 'They walk.', 'Should default to they/plural');
     });
 
     // Print summary

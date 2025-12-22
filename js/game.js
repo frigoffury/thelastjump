@@ -238,7 +238,7 @@ const Game = {
         const eligible = [];
         for (const [id, event] of Object.entries(Events)) {
             if (this.state.completedEvents.includes(id)) continue;
-            if (!this.checkEventConditions(event.conditions)) continue;
+            if (!ConditionChecker.check(event.conditions, this)) continue;
             if (event.probability < 1 && this.random() > event.probability) continue;
             eligible.push({ id, event });
         }
@@ -250,35 +250,27 @@ const Game = {
         // Handle superseded events
         for (let i = 1; i < eligible.length; i++) {
             const { id, event } = eligible[i];
-            if (typeof event.onSuperseded === 'function') {
-                event.onSuperseded(this);
-            }
             if (event.onSuperseded === 'remove') {
                 this.state.completedEvents.push(id);
             }
+            // 'reschedule' means do nothing - event stays eligible for next check
         }
 
-        const result = winner.event.onTrigger(this);
-        this.showEventResult(result);
-    },
+        // Execute the winning event
+        let result;
+        if (winner.event.handler && Handlers[winner.event.handler]) {
+            result = Handlers[winner.event.handler](this, winner.event, {});
+        } else if (winner.event.effects) {
+            const text = EffectExecutor.execute(winner.event.effects, this);
+            result = {
+                text: winner.event.text || text || '',
+                choices: [{ text: 'Continue', action: 'dismiss' }]
+            };
+        } else {
+            result = { text: winner.event.text || '', choices: [{ text: 'Continue', action: 'dismiss' }] };
+        }
 
-    checkEventConditions(conditions) {
-        if (!conditions) return true;
-        const pid = this.state.playerId;
-        if (conditions.weekDivisibleBy && this.state.week % conditions.weekDivisibleBy !== 0) {
-            return false;
-        }
-        if (conditions.minWeek && this.state.week < conditions.minWeek) return false;
-        if (conditions.maxWeek && this.state.week > conditions.maxWeek) return false;
-        if (conditions.flags) {
-            for (const flag of conditions.flags) {
-                if (!this.hasFlag(flag)) return false;
-            }
-        }
-        if (conditions.playerHasObjectOfType) {
-            if (!this.getCharacterObjectOfType(pid, conditions.playerHasObjectOfType)) return false;
-        }
-        return true;
+        if (result) this.showEventResult(result);
     },
 
     showEventResult(result) {
@@ -319,7 +311,7 @@ const Game = {
 
             // Check if chapter should advance
             if (chapter.advanceWhen && chapter.advanceTo) {
-                if (this.checkStorylineConditions(chapter.advanceWhen)) {
+                if (ConditionChecker.check(chapter.advanceWhen, this)) {
                     this.advanceChapter(storyId, chapter.advanceTo);
                 }
             }
@@ -352,13 +344,6 @@ const Game = {
         return texts;
     },
 
-    checkStorylineConditions(conditions) {
-        if (!conditions) return true;
-        if (conditions.hasFlag && !this.hasFlag(conditions.hasFlag)) return false;
-        if (conditions.minWeek && this.state.week < conditions.minWeek) return false;
-        return true;
-    },
-
     // === Actions ===
     // Actions are things the player can do, defined in data/actions.js.
     // They're collected based on conditions (storyline state, flags, etc.)
@@ -367,41 +352,45 @@ const Game = {
     collectAvailableActions() {
         const available = [];
         for (const [id, action] of Object.entries(Actions)) {
-            if (this.checkActionConditions(action.conditions)) {
+            if (ConditionChecker.check(action.conditions, this)) {
                 available.push(action);
             }
         }
         return available;
     },
 
-    checkActionConditions(conditions) {
-        if (!conditions) return true;
-
-        if (conditions.inChapter) {
-            for (const [storyId, requiredChapter] of Object.entries(conditions.inChapter)) {
-                const storylineState = this.state.storylines[storyId];
-                if (!storylineState || storylineState.currentChapter !== requiredChapter) {
-                    return false;
-                }
-            }
-        }
-
-        if (conditions.hasFlag && !this.hasFlag(conditions.hasFlag)) return false;
-        if (conditions.notFlag && this.hasFlag(conditions.notFlag)) return false;
-
-        return true;
-    },
-
     executeAction(action) {
         if (action.actionCost) {
             this.state.actionsRemaining -= action.actionCost;
         }
-        if (action.onSelect) {
-            action.onSelect(this);
-        } else {
+
+        // Continuation: resumes game loop after action completes
+        const continueGameLoop = () => {
             this.evaluateEvents();
             this.evaluateStorylines();
             this.refreshDisplay();
+        };
+
+        // Run handler if present
+        // Handlers can return { async: true, skipEffects: true }
+        // Async handlers must call onComplete() when done to resume the game loop
+        let handlerResult = null;
+        if (action.handler && Handlers[action.handler]) {
+            handlerResult = Handlers[action.handler](this, action, { onComplete: continueGameLoop });
+        }
+
+        // Process declarative effects unless handler said to skip
+        if (action.effects && !handlerResult?.skipEffects) {
+            const text = EffectExecutor.execute(action.effects, this);
+            if (text) {
+                this.renderStory(text);
+            }
+        }
+
+        // If handler is async (interactive sequence), it will call onComplete when done
+        // Otherwise, continue the game loop now
+        if (!handlerResult?.async) {
+            continueGameLoop();
         }
     },
 

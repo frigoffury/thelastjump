@@ -145,9 +145,28 @@ body {
 @media (max-width: 700px) {
     #game-container {
         grid-template-columns: 1fr;
+        grid-template-rows: auto auto 1fr;
+    }
+
+    #game-header {
+        order: 1;
     }
 
     #game-sidebar {
-        order: -1;
+        order: 2;
+    }
+
+    #game-main {
+        order: 3;
+        min-height: 0;
+    }
+
+    #narrative-panel {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    #choices-panel {
+        flex-shrink: 0;
     }
 }

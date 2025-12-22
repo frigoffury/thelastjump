@@ -1,0 +1,18 @@
+{
+    "intro": {
+        "title": "The Beginning",
+        "initialChapter": "start",
+        "chapters": {
+            "start": {
+                "text": "You are a Jumper—one who slips between universes, inhabiting new lives, trying to avert The End.\n\nYou have failed before. You will fail again. But perhaps, this time, you will succeed.\n\nA new universe awaits. A new identity. A new chance.",
+                "showText": "onEnter",
+                "advanceWhen": { "hasFlag": "character_created" },
+                "advanceTo": "awakening"
+            },
+            "awakening": {
+                "text": "You open your eyes. The memories of your new life settle into place—some sharp, some hazy. You know who you are now, even if the person you were before feels like a fading dream.\n\nThe world stretches out before you. The End is coming, but not yet. You have time. For now.",
+                "showText": "onEnter"
+            }
+        }
+    }
+}
