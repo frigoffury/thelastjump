@@ -14,6 +14,8 @@
  *   removeObjectOfType: 'templateType'        - remove first object of type
  *   advanceChapter: ['storyId', 'chapterId']  - advance a storyline
  *   enterStory: 'storyId'                     - enter a new storyline
+ *   modifyObjectiveProgress: ['storyId', delta] - add to objective progress
+ *   setObjectiveProgress: ['storyId', value]  - set objective progress
  *   showText: 'text'                          - queue text for display
  *
  * Returns collected text for display (if any showText effects were used).
@@ -86,6 +88,24 @@ const EffectExecutor = {
             // enterStory: 'storyId'
             if (effect.enterStory != null) {
                 game.enterStory(effect.enterStory);
+            }
+
+            // modifyObjectiveProgress: ['storyId', delta]
+            // Modifies progress value on a storyline (for tracking objective completion)
+            if (effect.modifyObjectiveProgress != null) {
+                const [storyId, delta] = effect.modifyObjectiveProgress;
+                if (game.state.storylines[storyId]) {
+                    const storyline = game.state.storylines[storyId];
+                    storyline.progress = (storyline.progress || 0) + delta;
+                }
+            }
+
+            // setObjectiveProgress: ['storyId', value]
+            if (effect.setObjectiveProgress != null) {
+                const [storyId, value] = effect.setObjectiveProgress;
+                if (game.state.storylines[storyId]) {
+                    game.state.storylines[storyId].progress = value;
+                }
             }
 
             // showText: 'text' - collect for display

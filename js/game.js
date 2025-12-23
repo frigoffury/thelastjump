@@ -301,7 +301,7 @@ const Game = {
     },
 
     evaluateStorylines() {
-        // Check each storyline for chapter advancement
+        // Check each storyline for chapter advancement or failure
         for (const [storyId, storylineState] of Object.entries(this.state.storylines)) {
             const story = Stories[storyId];
             if (!story) continue;
@@ -309,11 +309,56 @@ const Game = {
             const chapter = story.chapters[storylineState.currentChapter];
             if (!chapter) continue;
 
-            // Check if chapter should advance
+            // Check for failure first (failure takes precedence if both match)
+            if (chapter.failWhen && chapter.failTo) {
+                if (ConditionChecker.check(chapter.failWhen, this)) {
+                    this.advanceChapter(storyId, chapter.failTo);
+                    continue; // Don't also check advanceWhen
+                }
+            }
+
+            // Check if chapter should advance (success path)
             if (chapter.advanceWhen && chapter.advanceTo) {
                 if (ConditionChecker.check(chapter.advanceWhen, this)) {
                     this.advanceChapter(storyId, chapter.advanceTo);
                 }
+            }
+        }
+
+        // After all advancement, check for completed objectives
+        this.checkObjectiveCompletions();
+    },
+
+    // Check for objectives that have reached terminal states
+    checkObjectiveCompletions() {
+        for (const [storyId, storylineState] of Object.entries(this.state.storylines)) {
+            // Skip already completed objectives
+            if (storylineState.completed) continue;
+
+            const story = Stories[storyId];
+            if (!story) continue;
+
+            const chapter = story.chapters[storylineState.currentChapter];
+            if (!chapter || !chapter.objectiveResult) continue;
+
+            // Mark as completed
+            storylineState.completed = true;
+            storylineState.result = chapter.objectiveResult;
+
+            const isSuccess = chapter.objectiveResult === 'success';
+
+            // Execute handler if present
+            if (isSuccess && chapter.successHandler && Handlers[chapter.successHandler]) {
+                Handlers[chapter.successHandler](this, { story, chapter, storyId }, {});
+            } else if (!isSuccess && chapter.failureHandler && Handlers[chapter.failureHandler]) {
+                Handlers[chapter.failureHandler](this, { story, chapter, storyId }, {});
+            }
+
+            // Execute effects
+            const effects = isSuccess ? chapter.successEffects : chapter.failureEffects;
+            if (effects) {
+                const text = EffectExecutor.execute(effects, this);
+                if (text) this.renderStory(text);
             }
         }
     },

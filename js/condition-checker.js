@@ -13,6 +13,9 @@
  *   weekDivisibleBy: number                   - current week divisible by N
  *   minWeek: number                           - at least week N
  *   maxWeek: number                           - at most week N
+ *   objectiveProgress: ['storyId', 'op', val] - check objective progress value
+ *   objectiveComplete: { storyId: result }    - result: true|'success'|'failure'
+ *   objectiveActive: 'storyId' or [...]       - objective started but not done
  *   all: [conditions...]                      - all must pass (AND)
  *   any: [conditions...]                      - at least one must pass (OR)
  *   not: condition                            - inverts a condition
@@ -94,6 +97,36 @@ const ConditionChecker = {
         if (conditions.playerHasObjectOfType != null) {
             if (!game.getCharacterObjectOfType(pid, conditions.playerHasObjectOfType)) {
                 return false;
+            }
+        }
+
+        // objectiveProgress: ['storyId', 'op', value] - check progress on objective
+        if (conditions.objectiveProgress) {
+            const [storyId, op, value] = conditions.objectiveProgress;
+            const storyline = game.state.storylines[storyId];
+            const progress = storyline?.progress || 0;
+            if (!this.compare(progress, op, value)) return false;
+        }
+
+        // objectiveComplete: { storyId: 'success' | 'failure' | true }
+        // true = just completed, 'success'/'failure' = completed with that result
+        if (conditions.objectiveComplete) {
+            for (const [storyId, expectedResult] of Object.entries(conditions.objectiveComplete)) {
+                const storyline = game.state.storylines[storyId];
+                if (!storyline?.completed) return false;
+                if (expectedResult !== true && storyline.result !== expectedResult) return false;
+            }
+        }
+
+        // objectiveActive: 'storyId' or ['storyId1', 'storyId2']
+        // Check if objective is active (started but not completed)
+        if (conditions.objectiveActive != null) {
+            const storyIds = Array.isArray(conditions.objectiveActive)
+                ? conditions.objectiveActive
+                : [conditions.objectiveActive];
+            for (const storyId of storyIds) {
+                const storyline = game.state.storylines[storyId];
+                if (!storyline || storyline.completed) return false;
             }
         }
 

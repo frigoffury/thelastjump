@@ -482,6 +482,266 @@ function runTests() {
         t.assertEqual(result, 'They walk.', 'Should default to they/plural');
     });
 
+    // === Objectives Tests ===
+    const ConditionChecker = context.ConditionChecker;
+    const EffectExecutor = context.EffectExecutor;
+
+    harness.runTest('Objective: failWhen condition advances to failTo chapter', (t) => {
+        Game.init();
+
+        // Inject a test objective story
+        context.Stories['testObjective'] = {
+            initialChapter: 'active',
+            chapters: {
+                active: {
+                    text: 'Do the thing before week 3.',
+                    advanceWhen: { hasFlag: 'task_done' },
+                    advanceTo: 'success',
+                    failWhen: { minWeek: 3 },
+                    failTo: 'failure'
+                },
+                success: { text: 'You did it!', objectiveResult: 'success' },
+                failure: { text: 'Too late.', objectiveResult: 'failure' }
+            }
+        };
+
+        Game.enterStory('testObjective');
+        t.assertEqual(Game.state.storylines['testObjective'].currentChapter, 'active', 'Should start in active');
+
+        // Advance time to week 3
+        Game.state.week = 3;
+        Game.evaluateStorylines();
+
+        t.assertEqual(Game.state.storylines['testObjective'].currentChapter, 'failure', 'Should advance to failure');
+    });
+
+    harness.runTest('Objective: advanceWhen takes precedence when both conditions pass', (t) => {
+        Game.init();
+
+        context.Stories['testRace'] = {
+            initialChapter: 'active',
+            chapters: {
+                active: {
+                    advanceWhen: { hasFlag: 'win' },
+                    advanceTo: 'won',
+                    failWhen: { hasFlag: 'lose' },
+                    failTo: 'lost'
+                },
+                won: { objectiveResult: 'success' },
+                lost: { objectiveResult: 'failure' }
+            }
+        };
+
+        Game.enterStory('testRace');
+        Game.setFlag('win');
+        // Note: failWhen is checked first, so if lose is also set, it fails
+        Game.evaluateStorylines();
+
+        t.assertEqual(Game.state.storylines['testRace'].currentChapter, 'won', 'Should advance to won');
+    });
+
+    harness.runTest('Objective: failure takes precedence when both conditions match', (t) => {
+        Game.init();
+
+        context.Stories['testPrecedence'] = {
+            initialChapter: 'active',
+            chapters: {
+                active: {
+                    advanceWhen: { hasFlag: 'done' },
+                    advanceTo: 'success',
+                    failWhen: { hasFlag: 'done' },  // Same condition
+                    failTo: 'failure'
+                },
+                success: { objectiveResult: 'success' },
+                failure: { objectiveResult: 'failure' }
+            }
+        };
+
+        Game.enterStory('testPrecedence');
+        Game.setFlag('done');
+        Game.evaluateStorylines();
+
+        // failWhen is checked first
+        t.assertEqual(Game.state.storylines['testPrecedence'].currentChapter, 'failure', 'Failure should take precedence');
+    });
+
+    harness.runTest('Objective: objectiveResult marks completion state', (t) => {
+        Game.init();
+
+        context.Stories['testComplete'] = {
+            initialChapter: 'start',
+            chapters: {
+                start: {
+                    advanceWhen: { hasFlag: 'go' },
+                    advanceTo: 'done'
+                },
+                done: { objectiveResult: 'success' }
+            }
+        };
+
+        Game.enterStory('testComplete');
+        t.assert(!Game.state.storylines['testComplete'].completed, 'Should not be completed initially');
+
+        Game.setFlag('go');
+        Game.evaluateStorylines();
+
+        t.assert(Game.state.storylines['testComplete'].completed, 'Should be marked completed');
+        t.assertEqual(Game.state.storylines['testComplete'].result, 'success', 'Result should be success');
+    });
+
+    harness.runTest('Objective: successEffects execute on success', (t) => {
+        Game.init();
+
+        context.Stories['testSuccessEffects'] = {
+            initialChapter: 'start',
+            chapters: {
+                start: { advanceWhen: { hasFlag: 'win' }, advanceTo: 'end' },
+                end: {
+                    objectiveResult: 'success',
+                    successEffects: [{ setFlag: 'reward_given' }]
+                }
+            }
+        };
+
+        Game.enterStory('testSuccessEffects');
+        Game.setFlag('win');
+        Game.evaluateStorylines();
+
+        t.assert(Game.hasFlag('reward_given'), 'Success effects should set flag');
+    });
+
+    harness.runTest('Objective: failureEffects execute on failure', (t) => {
+        Game.init();
+
+        context.Stories['testFailEffects'] = {
+            initialChapter: 'start',
+            chapters: {
+                start: { failWhen: { hasFlag: 'lose' }, failTo: 'end' },
+                end: {
+                    objectiveResult: 'failure',
+                    failureEffects: [{ setFlag: 'penalty_applied' }]
+                }
+            }
+        };
+
+        Game.enterStory('testFailEffects');
+        Game.setFlag('lose');
+        Game.evaluateStorylines();
+
+        t.assert(Game.hasFlag('penalty_applied'), 'Failure effects should set flag');
+    });
+
+    harness.runTest('Effect: modifyObjectiveProgress adds to progress', (t) => {
+        Game.init();
+        Game.enterStory('intro');
+
+        EffectExecutor.execute([
+            { modifyObjectiveProgress: ['intro', 5] }
+        ], Game);
+
+        t.assertEqual(Game.state.storylines['intro'].progress, 5, 'Progress should be 5');
+
+        EffectExecutor.execute([
+            { modifyObjectiveProgress: ['intro', 3] }
+        ], Game);
+
+        t.assertEqual(Game.state.storylines['intro'].progress, 8, 'Progress should accumulate to 8');
+    });
+
+    harness.runTest('Effect: setObjectiveProgress sets progress directly', (t) => {
+        Game.init();
+        Game.enterStory('intro');
+
+        EffectExecutor.execute([
+            { setObjectiveProgress: ['intro', 10] }
+        ], Game);
+
+        t.assertEqual(Game.state.storylines['intro'].progress, 10, 'Progress should be set to 10');
+
+        EffectExecutor.execute([
+            { setObjectiveProgress: ['intro', 3] }
+        ], Game);
+
+        t.assertEqual(Game.state.storylines['intro'].progress, 3, 'Progress should be reset to 3');
+    });
+
+    harness.runTest('Condition: objectiveProgress checks progress value', (t) => {
+        Game.init();
+        Game.enterStory('intro');
+        Game.state.storylines['intro'].progress = 5;
+
+        t.assert(
+            ConditionChecker.check({ objectiveProgress: ['intro', '>=', 5] }, Game),
+            'Should pass >= 5'
+        );
+        t.assert(
+            !ConditionChecker.check({ objectiveProgress: ['intro', '>', 5] }, Game),
+            'Should fail > 5'
+        );
+        t.assert(
+            ConditionChecker.check({ objectiveProgress: ['intro', '==', 5] }, Game),
+            'Should pass == 5'
+        );
+    });
+
+    harness.runTest('Condition: objectiveComplete checks completion state', (t) => {
+        Game.init();
+
+        context.Stories['testCheckComplete'] = {
+            initialChapter: 'done',
+            chapters: { done: { objectiveResult: 'success' } }
+        };
+
+        Game.enterStory('testCheckComplete');
+
+        t.assert(
+            !ConditionChecker.check({ objectiveComplete: { testCheckComplete: true } }, Game),
+            'Should fail before evaluation'
+        );
+
+        Game.evaluateStorylines();
+
+        t.assert(
+            ConditionChecker.check({ objectiveComplete: { testCheckComplete: true } }, Game),
+            'Should pass after completion'
+        );
+        t.assert(
+            ConditionChecker.check({ objectiveComplete: { testCheckComplete: 'success' } }, Game),
+            'Should pass with success result'
+        );
+        t.assert(
+            !ConditionChecker.check({ objectiveComplete: { testCheckComplete: 'failure' } }, Game),
+            'Should fail with wrong result'
+        );
+    });
+
+    harness.runTest('Condition: objectiveActive checks active state', (t) => {
+        Game.init();
+
+        context.Stories['testActive'] = {
+            initialChapter: 'going',
+            chapters: {
+                going: { advanceWhen: { hasFlag: 'finish' }, advanceTo: 'done' },
+                done: { objectiveResult: 'success' }
+            }
+        };
+
+        Game.enterStory('testActive');
+
+        t.assert(
+            ConditionChecker.check({ objectiveActive: 'testActive' }, Game),
+            'Should be active initially'
+        );
+
+        Game.setFlag('finish');
+        Game.evaluateStorylines();
+
+        t.assert(
+            !ConditionChecker.check({ objectiveActive: 'testActive' }, Game),
+            'Should not be active after completion'
+        );
+    });
+
     // Print summary
     const success = harness.printSummary();
     process.exit(success ? 0 : 1);
