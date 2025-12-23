@@ -222,12 +222,14 @@ function loadGameFiles() {
         Actions: null,
         Events: null,
         Stories: null,
+        Pursuits: null,
         Game: null,
         CharacterCreation: null,
         TextInterpolation: null,
         ConditionChecker: null,
         EffectExecutor: null,
-        Handlers: null
+        Handlers: null,
+        PursuitManager: null
     });
 
     const basePath = path.join(__dirname, '..');
@@ -236,6 +238,7 @@ function loadGameFiles() {
     context.Actions = JSON.parse(fs.readFileSync(path.join(basePath, 'data/actions.json'), 'utf8'));
     context.Events = JSON.parse(fs.readFileSync(path.join(basePath, 'data/events/events.json'), 'utf8'));
     context.Stories = JSON.parse(fs.readFileSync(path.join(basePath, 'data/stories/stories.json'), 'utf8'));
+    context.Pursuits = JSON.parse(fs.readFileSync(path.join(basePath, 'data/pursuits.json'), 'utf8'));
 
     // JS files must be loaded in dependency order
     const files = [
@@ -249,6 +252,7 @@ function loadGameFiles() {
         'js/effect-executor.js',
         'js/handlers.js',
         'js/character-creation.js',
+        'js/pursuit-manager.js',
         'js/game.js'
     ];
 
@@ -740,6 +744,328 @@ function runTests() {
             !ConditionChecker.check({ objectiveActive: 'testActive' }, Game),
             'Should not be active after completion'
         );
+    });
+
+    // === Pursuit Tests ===
+    const PursuitManager = context.PursuitManager;
+
+    harness.runTest('Pursuit: initDefaults activates non-action pursuits', (t) => {
+        Game.init();
+
+        t.assert(Game.state.pursuits !== undefined, 'Should have pursuits state');
+        // Our sample pursuits are all toggles, so they should be initialized
+        t.assert(Game.state.pursuits['burn_midnight_oil'] !== undefined, 'Should init burn_midnight_oil');
+        t.assert(Game.state.pursuits['frugal_living'] !== undefined, 'Should init frugal_living');
+    });
+
+    harness.runTest('Pursuit: toggle pursuits default to disabled', (t) => {
+        Game.init();
+
+        t.assertEqual(Game.state.pursuits['burn_midnight_oil'].enabled, false, 'Should default to disabled');
+        t.assertEqual(Game.state.pursuits['frugal_living'].enabled, false, 'Should default to disabled');
+    });
+
+    harness.runTest('Pursuit: startPursuit effect activates action pursuit', (t) => {
+        Game.init();
+
+        context.Pursuits['test_job'] = {
+            configType: 'action',
+            hoursCost: 40,
+            weeklyEffects: [{ modifyStat: ['money', 100] }]
+        };
+
+        EffectExecutor.execute([{ startPursuit: 'test_job' }], Game);
+
+        t.assert(Game.state.pursuits['test_job']?.active, 'Pursuit should be active');
+    });
+
+    harness.runTest('Pursuit: endPursuit effect deactivates pursuit', (t) => {
+        Game.init();
+
+        context.Pursuits['test_job'] = {
+            configType: 'action',
+            hoursCost: 40,
+            exitEffects: [{ setFlag: 'job_ended' }]
+        };
+
+        PursuitManager.activatePursuit(Game, 'test_job');
+        t.assert(Game.state.pursuits['test_job']?.active, 'Should be active after activation');
+
+        EffectExecutor.execute([{ endPursuit: 'test_job' }], Game);
+
+        t.assert(!Game.state.pursuits['test_job']?.active, 'Pursuit should be inactive');
+        t.assert(Game.hasFlag('job_ended'), 'Exit effects should run');
+    });
+
+    harness.runTest('Pursuit: calculatePursuitHours sums active pursuit costs', (t) => {
+        Game.init();
+
+        context.Pursuits['job1'] = { configType: 'action', hoursCost: 40 };
+        context.Pursuits['routine1'] = { configType: 'toggle', hoursCost: 10 };
+
+        PursuitManager.activatePursuit(Game, 'job1');
+        PursuitManager.activatePursuit(Game, 'routine1');
+        Game.state.pursuits['routine1'].enabled = true;
+
+        const hours = PursuitManager.calculatePursuitHours(Game);
+        t.assertEqual(hours, 50, 'Should sum hours correctly');
+    });
+
+    harness.runTest('Pursuit: toggle disabled does not contribute hours', (t) => {
+        Game.init();
+
+        context.Pursuits['routine1'] = { configType: 'toggle', hoursCost: 10 };
+
+        PursuitManager.activatePursuit(Game, 'routine1');
+        Game.state.pursuits['routine1'].enabled = false;
+
+        const hours = PursuitManager.calculatePursuitHours(Game);
+        // Only the default pursuits (burn_midnight_oil, frugal_living) are there, both disabled
+        t.assertEqual(hours, 0, 'Disabled toggle should not add hours');
+    });
+
+    harness.runTest('Pursuit: excess hours reduce actions', (t) => {
+        Game.init();
+
+        context.Pursuits['heavy_job'] = { configType: 'action', hoursCost: 70 };
+
+        PursuitManager.activatePursuit(Game, 'heavy_job');
+        const result = PursuitManager.calculateEffectiveActions(Game);
+
+        // 70 - 50 = 20 excess, 20/20 = 1 action penalty
+        // 3 - 1 = 2 guaranteed actions
+        t.assertEqual(result.guaranteed, 2, 'Should have 2 guaranteed actions');
+        t.assertEqual(result.bonusChance, 0, 'Should have no bonus chance');
+    });
+
+    harness.runTest('Pursuit: fractional penalty gives bonus chance', (t) => {
+        Game.init();
+
+        context.Pursuits['medium_job'] = { configType: 'action', hoursCost: 62 };
+
+        PursuitManager.activatePursuit(Game, 'medium_job');
+        const result = PursuitManager.calculateEffectiveActions(Game);
+
+        // 62 - 50 = 12 excess, 12/20 = 0.6 penalty
+        // 3 - 0.6 = 2.4, so 2 guaranteed + 40% chance
+        t.assertEqual(result.guaranteed, 2, 'Should have 2 guaranteed actions');
+        t.assert(result.bonusChance > 0.35 && result.bonusChance < 0.45, 'Should have ~40% bonus chance');
+    });
+
+    harness.runTest('Pursuit: weekly effects apply when processed', (t) => {
+        Game.init();
+
+        context.Pursuits['test_pursuit'] = {
+            configType: 'action',
+            hoursCost: 10,
+            weeklyEffects: [{ modifyStat: ['money', 50] }]
+        };
+
+        const initialMoney = Game.getStat(Game.state.playerId, 'money');
+        PursuitManager.activatePursuit(Game, 'test_pursuit');
+        PursuitManager.processWeeklyEffects(Game);
+
+        t.assertEqual(
+            Game.getStat(Game.state.playerId, 'money'),
+            initialMoney + 50,
+            'Weekly effect should add money'
+        );
+    });
+
+    harness.runTest('Pursuit: toggle weekly effects only apply when enabled', (t) => {
+        Game.init();
+
+        // frugal_living adds 10 money per week
+        const initialMoney = Game.getStat(Game.state.playerId, 'money');
+
+        // Disabled by default
+        PursuitManager.processWeeklyEffects(Game);
+        t.assertEqual(Game.getStat(Game.state.playerId, 'money'), initialMoney, 'Should not add money when disabled');
+
+        // Enable it
+        Game.state.pursuits['frugal_living'].enabled = true;
+        PursuitManager.processWeeklyEffects(Game);
+        t.assertEqual(Game.getStat(Game.state.playerId, 'money'), initialMoney + 10, 'Should add money when enabled');
+    });
+
+    harness.runTest('Pursuit: select option weekly effects use selected option', (t) => {
+        Game.init();
+
+        context.Pursuits['makeup'] = {
+            configType: 'select',
+            default: 'none',
+            options: {
+                none: { hoursCost: 0, weeklyEffects: [] },
+                natural: { hoursCost: 2, weeklyEffects: [{ setFlag: 'wearing_makeup' }] }
+            }
+        };
+
+        PursuitManager.activatePursuit(Game, 'makeup');
+        Game.state.pursuits['makeup'].option = 'natural';
+        PursuitManager.processWeeklyEffects(Game);
+
+        t.assert(Game.hasFlag('wearing_makeup'), 'Should apply natural option effects');
+    });
+
+    harness.runTest('Condition: pursuitActive checks active state', (t) => {
+        Game.init();
+
+        context.Pursuits['test_pursuit'] = { configType: 'action', hoursCost: 10 };
+
+        t.assert(
+            !ConditionChecker.check({ pursuitActive: 'test_pursuit' }, Game),
+            'Should fail when pursuit not active'
+        );
+
+        PursuitManager.activatePursuit(Game, 'test_pursuit');
+
+        t.assert(
+            ConditionChecker.check({ pursuitActive: 'test_pursuit' }, Game),
+            'Should pass when pursuit active'
+        );
+    });
+
+    harness.runTest('Condition: pursuitActive checks toggle enabled state', (t) => {
+        Game.init();
+
+        // frugal_living is a toggle, initialized but disabled by default
+        t.assert(
+            !ConditionChecker.check({ pursuitActive: 'frugal_living' }, Game),
+            'Should fail when toggle disabled'
+        );
+
+        Game.state.pursuits['frugal_living'].enabled = true;
+
+        t.assert(
+            ConditionChecker.check({ pursuitActive: 'frugal_living' }, Game),
+            'Should pass when toggle enabled'
+        );
+    });
+
+    harness.runTest('Condition: pursuitOption checks selected option', (t) => {
+        Game.init();
+
+        context.Pursuits['makeup'] = {
+            configType: 'select',
+            options: { none: {}, natural: {} }
+        };
+
+        PursuitManager.activatePursuit(Game, 'makeup');
+        Game.state.pursuits['makeup'].option = 'natural';
+
+        t.assert(
+            ConditionChecker.check({ pursuitOption: ['makeup', 'natural'] }, Game),
+            'Should pass for correct option'
+        );
+        t.assert(
+            !ConditionChecker.check({ pursuitOption: ['makeup', 'none'] }, Game),
+            'Should fail for wrong option'
+        );
+    });
+
+    harness.runTest('Condition: pursuitHours checks total hours', (t) => {
+        Game.init();
+
+        context.Pursuits['job'] = { configType: 'action', hoursCost: 40 };
+
+        PursuitManager.activatePursuit(Game, 'job');
+
+        t.assert(
+            ConditionChecker.check({ pursuitHours: ['>=', 40] }, Game),
+            'Should pass >= 40'
+        );
+        t.assert(
+            !ConditionChecker.check({ pursuitHours: ['>', 50] }, Game),
+            'Should fail > 50'
+        );
+    });
+
+    harness.runTest('Pursuit: exitConditions triggers deactivation', (t) => {
+        Game.init();
+
+        context.Pursuits['temp_job'] = {
+            configType: 'action',
+            hoursCost: 40,
+            exitConditions: { hasFlag: 'job_cancelled' },
+            exitEffects: [{ setFlag: 'received_severance' }]
+        };
+
+        PursuitManager.activatePursuit(Game, 'temp_job');
+        t.assert(Game.state.pursuits['temp_job'].active, 'Should be active initially');
+
+        Game.setFlag('job_cancelled');
+        PursuitManager.checkExitConditions(Game);
+
+        t.assert(!Game.state.pursuits['temp_job'].active, 'Should deactivate');
+        t.assert(Game.hasFlag('received_severance'), 'Should run exit effects');
+    });
+
+    harness.runTest('Effect: ensurePossession creates new object', (t) => {
+        Game.init();
+
+        EffectExecutor.execute([
+            { ensurePossession: ['appearance_boost', { level: 1 }] }
+        ], Game);
+
+        const obj = Game.getCharacterObjectOfType(Game.state.playerId, 'appearance_boost');
+        t.assert(obj, 'Should create object');
+        t.assertEqual(obj.state.level, 1, 'Should have correct state');
+    });
+
+    harness.runTest('Effect: ensurePossession updates existing object', (t) => {
+        Game.init();
+
+        EffectExecutor.execute([
+            { ensurePossession: ['appearance_boost', { level: 1 }] }
+        ], Game);
+        EffectExecutor.execute([
+            { ensurePossession: ['appearance_boost', { level: 2 }] }
+        ], Game);
+
+        const objects = Game.getCharacterObjectsOfType(Game.state.playerId, 'appearance_boost');
+        t.assertEqual(objects.length, 1, 'Should not duplicate');
+        t.assertEqual(objects[0].state.level, 2, 'Should update level');
+    });
+
+    harness.runTest('Pursuit: exclusive tags detect conflicts', (t) => {
+        Game.init();
+
+        context.Pursuits['job1'] = {
+            configType: 'action',
+            hoursCost: 40,
+            tags: ['employment', 'full_time'],
+            exclusive: ['full_time']
+        };
+        context.Pursuits['job2'] = {
+            configType: 'action',
+            hoursCost: 40,
+            tags: ['employment', 'full_time']
+        };
+
+        PursuitManager.activatePursuit(Game, 'job1');
+        const conflicts = PursuitManager.getConflictingPursuits(Game, 'job2');
+
+        t.assertEqual(conflicts.length, 1, 'Should detect conflict');
+        t.assertEqual(conflicts[0], 'job1', 'Should identify conflicting pursuit');
+    });
+
+    harness.runTest('Pursuit: negative hoursCost gives back time', (t) => {
+        Game.init();
+
+        // burn_midnight_oil has -15 hours
+        Game.state.pursuits['burn_midnight_oil'].enabled = true;
+
+        // Add a job that uses 60 hours
+        context.Pursuits['demanding_job'] = { configType: 'action', hoursCost: 60 };
+        PursuitManager.activatePursuit(Game, 'demanding_job');
+
+        const hours = PursuitManager.calculatePursuitHours(Game);
+        // 60 - 15 = 45 hours
+        t.assertEqual(hours, 45, 'Negative cost should reduce total hours');
+
+        const result = PursuitManager.calculateEffectiveActions(Game);
+        // 45 < 50, so no penalty
+        t.assertEqual(result.guaranteed, 3, 'Should have full actions with negative offset');
     });
 
     // Print summary

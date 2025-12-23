@@ -16,6 +16,9 @@
  *   objectiveProgress: ['storyId', 'op', val] - check objective progress value
  *   objectiveComplete: { storyId: result }    - result: true|'success'|'failure'
  *   objectiveActive: 'storyId' or [...]       - objective started but not done
+ *   pursuitActive: 'id' or ['id1', 'id2']     - pursuit is active (& enabled for toggle)
+ *   pursuitOption: ['id', 'option']           - check select pursuit's current option
+ *   pursuitHours: ['op', value]               - check total weekly pursuit hours
  *   all: [conditions...]                      - all must pass (AND)
  *   any: [conditions...]                      - at least one must pass (OR)
  *   not: condition                            - inverts a condition
@@ -128,6 +131,39 @@ const ConditionChecker = {
                 const storyline = game.state.storylines[storyId];
                 if (!storyline || storyline.completed) return false;
             }
+        }
+
+        // pursuitActive: 'pursuitId' or ['id1', 'id2']
+        // Check if pursuit(s) are currently active (and enabled for toggles)
+        if (conditions.pursuitActive != null) {
+            const ids = Array.isArray(conditions.pursuitActive)
+                ? conditions.pursuitActive
+                : [conditions.pursuitActive];
+            for (const pursuitId of ids) {
+                const state = game.state.pursuits?.[pursuitId];
+                if (!state || !state.active) return false;
+                // For toggle pursuits, also check if enabled
+                const pursuit = typeof Pursuits !== 'undefined' ? Pursuits[pursuitId] : null;
+                if (pursuit?.configType === 'toggle' && !state.enabled) return false;
+            }
+        }
+
+        // pursuitOption: ['pursuitId', 'optionKey']
+        // Check current option for a select pursuit
+        if (conditions.pursuitOption != null) {
+            const [pursuitId, expectedOption] = conditions.pursuitOption;
+            const state = game.state.pursuits?.[pursuitId];
+            if (!state || state.option !== expectedOption) return false;
+        }
+
+        // pursuitHours: ['op', value]
+        // Check total weekly pursuit hours
+        if (conditions.pursuitHours != null) {
+            const [op, value] = conditions.pursuitHours;
+            const hours = typeof PursuitManager !== 'undefined'
+                ? PursuitManager.calculatePursuitHours(game)
+                : 0;
+            if (!this.compare(hours, op, value)) return false;
         }
 
         // flags: ['flag1', 'flag2'] - legacy support, same as hasFlag array

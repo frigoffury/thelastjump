@@ -34,10 +34,17 @@ const Game = {
             characters: {},
             objects: {},
             storylines: {},
+            pursuits: {},
             completedEvents: [],
             flags: {}
         };
         this.state.playerId = this.createCharacter('player', 'You');
+
+        // Initialize pursuits (non-action types get their defaults)
+        if (typeof PursuitManager !== 'undefined') {
+            PursuitManager.initDefaults(this);
+        }
+
         this.enterStory(Config.initialStory);
         this.evaluateStorylines();
         this.refreshDisplay();
@@ -219,8 +226,38 @@ const Game = {
 
     // === Time ===
     endWeek() {
+        // Check exit conditions for action-gated pursuits
+        if (typeof PursuitManager !== 'undefined') {
+            PursuitManager.checkExitConditions(this);
+        }
+
         this.state.week++;
-        this.state.actionsRemaining = Config.actionsPerPeriod;
+
+        // Show pursuit management UI, then start week
+        if (typeof PursuitManager !== 'undefined') {
+            PursuitManager.showPursuitUI(this, () => this.startWeek());
+        } else {
+            this.startWeek();
+        }
+    },
+
+    startWeek() {
+        // Calculate actions based on pursuit load
+        if (typeof PursuitManager !== 'undefined') {
+            const actions = PursuitManager.calculateEffectiveActions(this);
+            this.state.actionsRemaining = actions.guaranteed;
+
+            // Roll for bonus action
+            if (actions.bonusChance > 0 && this.random() < actions.bonusChance) {
+                this.state.actionsRemaining++;
+            }
+
+            // Process weekly effects from pursuits
+            PursuitManager.processWeeklyEffects(this);
+        } else {
+            this.state.actionsRemaining = Config.actionsPerPeriod;
+        }
+
         this.evaluateEvents();
         this.evaluateStorylines();
         this.refreshDisplay();

@@ -16,6 +16,9 @@
  *   enterStory: 'storyId'                     - enter a new storyline
  *   modifyObjectiveProgress: ['storyId', delta] - add to objective progress
  *   setObjectiveProgress: ['storyId', value]  - set objective progress
+ *   startPursuit: 'pursuitId'                 - activate an action-gated pursuit
+ *   endPursuit: 'pursuitId'                   - deactivate a pursuit
+ *   ensurePossession: ['type', { state }]     - create or update a possession
  *   showText: 'text'                          - queue text for display
  *
  * Returns collected text for display (if any showText effects were used).
@@ -105,6 +108,36 @@ const EffectExecutor = {
                 const [storyId, value] = effect.setObjectiveProgress;
                 if (game.state.storylines[storyId]) {
                     game.state.storylines[storyId].progress = value;
+                }
+            }
+
+            // startPursuit: 'pursuitId' - activate an action-gated pursuit
+            if (effect.startPursuit != null) {
+                if (typeof PursuitManager !== 'undefined') {
+                    PursuitManager.activatePursuit(game, effect.startPursuit);
+                }
+            }
+
+            // endPursuit: 'pursuitId' - deactivate a pursuit
+            if (effect.endPursuit != null) {
+                if (typeof PursuitManager !== 'undefined') {
+                    PursuitManager.deactivatePursuit(game, effect.endPursuit);
+                }
+            }
+
+            // ensurePossession: ['templateType', { state }]
+            // Creates object if player doesn't have one, or updates existing
+            if (effect.ensurePossession != null) {
+                const [templateType, stateOverrides] = effect.ensurePossession;
+                const existingObj = game.getCharacterObjectOfType(pid, templateType);
+
+                if (existingObj) {
+                    // Update existing object's state
+                    Object.assign(existingObj.state, stateOverrides || {});
+                } else {
+                    // Create new object
+                    const objId = game.createObject(templateType, templateType, stateOverrides || {});
+                    game.giveObject(objId, pid);
                 }
             }
 
