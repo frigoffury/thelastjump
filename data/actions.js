@@ -1,4 +1,6 @@
-{
+/* The Last Jump - Actions Data */
+
+Actions = {
     "beginJourney": {
         "id": "beginJourney",
         "text": "Begin your journey",
@@ -32,4 +34,4 @@
             { "showText": "You spend time asking around for work opportunities. Perhaps something will come of it." }
         ]
     }
-}
+};

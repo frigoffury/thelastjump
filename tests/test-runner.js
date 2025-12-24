@@ -234,12 +234,6 @@ function loadGameFiles() {
 
     const basePath = path.join(__dirname, '..');
 
-    // Load JSON data files
-    context.Actions = JSON.parse(fs.readFileSync(path.join(basePath, 'data/actions.json'), 'utf8'));
-    context.Events = JSON.parse(fs.readFileSync(path.join(basePath, 'data/events/events.json'), 'utf8'));
-    context.Stories = JSON.parse(fs.readFileSync(path.join(basePath, 'data/stories/stories.json'), 'utf8'));
-    context.Pursuits = JSON.parse(fs.readFileSync(path.join(basePath, 'data/pursuits.json'), 'utf8'));
-
     // JS files must be loaded in dependency order
     const files = [
         'data/config.js',
@@ -247,6 +241,10 @@ function loadGameFiles() {
         'data/templates/characters.js',
         'data/templates/objects.js',
         'data/creation-choices.js',
+        'data/actions.js',
+        'data/events/events.js',
+        'data/stories/stories.js',
+        'data/pursuits.js',
         'js/text-interpolation.js',
         'js/condition-checker.js',
         'js/effect-executor.js',

@@ -1,4 +1,6 @@
-{
+/* The Last Jump - Pursuits Data */
+
+Pursuits = {
     "burn_midnight_oil": {
         "title": "Burn the Midnight Oil",
         "description": "Sacrifice sleep for more time. Not sustainable.",
@@ -20,4 +22,4 @@
             { "modifyStat": ["money", 10] }
         ]
     }
-}
+};

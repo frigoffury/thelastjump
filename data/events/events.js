@@ -1,4 +1,6 @@
-{
+/* The Last Jump - Events Data */
+
+Events = {
     "rentDue": {
         "id": "rentDue",
         "priority": 80,
@@ -10,4 +12,4 @@
         "handler": "processRentPayments",
         "onSuperseded": "reschedule"
     }
-}
+};

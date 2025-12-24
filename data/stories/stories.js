@@ -1,4 +1,6 @@
-{
+/* The Last Jump - Stories Data */
+
+Stories = {
     "intro": {
         "title": "The Beginning",
         "initialChapter": "start",
@@ -15,4 +17,4 @@
             }
         }
     }
-}
+};
