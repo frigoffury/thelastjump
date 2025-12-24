@@ -1,4 +1,6 @@
-/* The Last Jump - Stories Data */
+/* The Last Jump - Stories Data
+ * JS-wrapped JSON format for local file:// compatibility (browsers block fetch for local files)
+ */
 
 Stories = {
     "intro": {

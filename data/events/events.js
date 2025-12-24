@@ -1,4 +1,6 @@
-/* The Last Jump - Events Data */
+/* The Last Jump - Events Data
+ * JS-wrapped JSON format for local file:// compatibility (browsers block fetch for local files)
+ */
 
 Events = {
     "rentDue": {

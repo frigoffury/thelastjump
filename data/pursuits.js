@@ -1,4 +1,6 @@
-/* The Last Jump - Pursuits Data */
+/* The Last Jump - Pursuits Data
+ * JS-wrapped JSON format for local file:// compatibility (browsers block fetch for local files)
+ */
 
 Pursuits = {
     "burn_midnight_oil": {

@@ -1,4 +1,6 @@
-/* The Last Jump - Actions Data */
+/* The Last Jump - Actions Data
+ * JS-wrapped JSON format for local file:// compatibility (browsers block fetch for local files)
+ */
 
 Actions = {
     "beginJourney": {
