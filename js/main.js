@@ -3,5 +3,21 @@
 // Data globals (Actions, Events, Stories, Pursuits) are loaded via script tags
 
 document.addEventListener('DOMContentLoaded', () => {
-    Game.init();
+    // Initialize system menu button
+    if (typeof SaveManager !== 'undefined') {
+        SaveManager.init();
+    }
+
+    // Show startup screen if saves exist, otherwise start new game
+    if (typeof SaveManager !== 'undefined' && Game.hasSave()) {
+        SaveManager.showStartupScreen(
+            () => Game.init(),
+            (slot) => {
+                Game.load(slot);
+                Game.resumeFromLoad();
+            }
+        );
+    } else {
+        Game.init();
+    }
 });

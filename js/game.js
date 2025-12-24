@@ -26,6 +26,7 @@ const Game = {
 
     // Initialize new game
     init() {
+        this.nextId = 1;
         this.state = {
             week: 1,
             actionsRemaining: Config.actionsPerPeriod,
@@ -233,11 +234,24 @@ const Game = {
 
         this.state.week++;
 
-        // Show pursuit management UI, then start week
-        if (typeof PursuitManager !== 'undefined') {
-            PursuitManager.showPursuitUI(this, () => this.startWeek());
+        // Save checkpoint: before pursuit management for the new week
+        this.save('autosave');
+
+        // Flow: save prompt -> pursuit UI -> start week
+        // Each step calls the next via callback when user dismisses modal
+        const showPursuitsThenStart = () => {
+            if (typeof PursuitManager !== 'undefined') {
+                PursuitManager.showPursuitUI(this, () => this.startWeek());
+            } else {
+                this.startWeek();
+            }
+        };
+
+        if (typeof SaveManager !== 'undefined') {
+            // Show save prompt, then continue to pursuits when dismissed
+            SaveManager.showWeekEndSavePrompt(this, showPursuitsThenStart);
         } else {
-            this.startWeek();
+            showPursuitsThenStart();
         }
     },
 
@@ -488,13 +502,27 @@ const Game = {
     },
 
     // === Save/Load ===
-    save() {
-        const data = JSON.stringify({ state: this.state, nextId: this.nextId });
-        localStorage.setItem(Config.saveKey, data);
+    getSaveKey(slot) {
+        return slot === 'autosave' ? Config.autoSaveKey : Config.saveKeyPrefix + slot;
     },
 
-    load() {
-        const data = localStorage.getItem(Config.saveKey);
+    save(slot) {
+        const key = this.getSaveKey(slot);
+        const data = {
+            state: this.state,
+            nextId: this.nextId,
+            meta: {
+                savedAt: Date.now(),
+                week: this.state.week,
+                characterName: this.getPlayer()?.name || 'Unknown'
+            }
+        };
+        localStorage.setItem(key, JSON.stringify(data));
+    },
+
+    load(slot) {
+        const key = this.getSaveKey(slot);
+        const data = localStorage.getItem(key);
         if (data) {
             const parsed = JSON.parse(data);
             this.state = parsed.state;
@@ -505,8 +533,48 @@ const Game = {
         return false;
     },
 
+    // Resume game after loading - shows pursuit UI since saves happen before it
+    // TODO: First week has no pursuit UI yet; default pursuits should be set during character creation
+    resumeFromLoad() {
+        if (typeof PursuitManager !== 'undefined') {
+            PursuitManager.showPursuitUI(this, () => this.startWeek());
+        } else {
+            this.startWeek();
+        }
+    },
+
+    getSaveSlotInfo(slot) {
+        const key = this.getSaveKey(slot);
+        const data = localStorage.getItem(key);
+        if (!data) {
+            return { exists: false, slot };
+        }
+        const parsed = JSON.parse(data);
+        return {
+            exists: true,
+            slot,
+            meta: parsed.meta || { week: parsed.state?.week || 1 }
+        };
+    },
+
+    getAllSaveSlots() {
+        const slots = [];
+        // Add autosave first
+        slots.push(this.getSaveSlotInfo('autosave'));
+        // Add numbered slots
+        for (let i = 0; i < Config.saveSlotCount; i++) {
+            slots.push(this.getSaveSlotInfo(i));
+        }
+        return slots;
+    },
+
     hasSave() {
-        return !!localStorage.getItem(Config.saveKey);
+        return this.getAllSaveSlots().some(s => s.exists);
+    },
+
+    deleteSave(slot) {
+        const key = this.getSaveKey(slot);
+        localStorage.removeItem(key);
     },
 
     // === UI ===

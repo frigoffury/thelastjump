@@ -6,8 +6,9 @@ const Config = {
     actionsPerPeriod: 3,        // Actions per week
 
     // Save settings
-    saveKey: 'thelastjump_save',
-    autoSaveEnabled: true,
+    saveSlotCount: 10,
+    saveKeyPrefix: 'thelastjump_save_',
+    autoSaveKey: 'thelastjump_autosave',
 
     // Starting scene
     initialStory: 'intro',

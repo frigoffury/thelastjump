@@ -1066,6 +1066,170 @@ function runTests() {
         t.assertEqual(result.guaranteed, 3, 'Should have full actions with negative offset');
     });
 
+    // === Save/Load Tests (Multi-Slot) ===
+
+    harness.runTest('Save: hasSave returns false initially', (t) => {
+        t.assert(!Game.hasSave(), 'Should have no save initially');
+    });
+
+    harness.runTest('Save: save() writes to numbered slot', (t) => {
+        Game.init();
+        Game.save(0);
+
+        t.assert(Game.hasSave(), 'Should have save after saving');
+        const key = context.Config.saveKeyPrefix + '0';
+        t.assert(mockLocalStorage.getItem(key), 'localStorage should have data at slot key');
+    });
+
+    harness.runTest('Save: save() writes to autosave slot', (t) => {
+        Game.init();
+        Game.save('autosave');
+
+        const key = context.Config.autoSaveKey;
+        t.assert(mockLocalStorage.getItem(key), 'localStorage should have autosave data');
+    });
+
+    harness.runTest('Save: save() includes metadata', (t) => {
+        Game.init();
+        Game.state.week = 7;
+        Game.save(0);
+
+        const key = context.Config.saveKeyPrefix + '0';
+        const data = JSON.parse(mockLocalStorage.getItem(key));
+        t.assert(data.meta, 'Save should have meta object');
+        t.assertEqual(data.meta.week, 7, 'Meta should have correct week');
+        t.assert(data.meta.savedAt, 'Meta should have savedAt timestamp');
+        t.assert(data.meta.characterName, 'Meta should have character name');
+    });
+
+    harness.runTest('Save: load() restores state correctly', (t) => {
+        Game.init();
+        Game.setFlag('test_flag');
+        Game.modifyStat(Game.state.playerId, 'health', 25);
+        Game.state.week = 5;
+        const originalPlayerId = Game.state.playerId;
+        Game.save(0);
+
+        // Reinitialize to reset state
+        Game.init();
+        t.assertEqual(Game.state.week, 1, 'Week should be 1 after reinit');
+        t.assert(!Game.hasFlag('test_flag'), 'Flag should not exist after reinit');
+
+        // Load saved state
+        const loaded = Game.load(0);
+        t.assert(loaded, 'load() should return true');
+        t.assertEqual(Game.state.week, 5, 'Week should be restored to 5');
+        t.assert(Game.hasFlag('test_flag'), 'Flag should be restored');
+        t.assertEqual(Game.state.playerId, originalPlayerId, 'Player ID should be restored');
+        t.assertEqual(Game.getStat(Game.state.playerId, 'health'), 75, 'Health should be restored');
+    });
+
+    harness.runTest('Save: load() returns false when no save exists', (t) => {
+        mockLocalStorage.clear();
+        const loaded = Game.load(0);
+        t.assert(!loaded, 'load() should return false with no save');
+    });
+
+    harness.runTest('Save: nextId is preserved across save/load', (t) => {
+        Game.init();
+        // Create some entities to increment nextId
+        Game.createCharacter('human', 'NPC1');
+        Game.createCharacter('human', 'NPC2');
+        const nextIdBefore = Game.nextId;
+        Game.save(0);
+
+        Game.init(); // Resets nextId
+        t.assert(Game.nextId < nextIdBefore, 'nextId should reset on init');
+
+        Game.load(0);
+        t.assertEqual(Game.nextId, nextIdBefore, 'nextId should be restored');
+    });
+
+    harness.runTest('Save: getAllSaveSlots returns correct count', (t) => {
+        Game.init();
+        const slots = Game.getAllSaveSlots();
+        // 1 autosave + 10 numbered slots
+        t.assertEqual(slots.length, 11, 'Should return 11 slots');
+        t.assertEqual(slots[0].slot, 'autosave', 'First slot should be autosave');
+        t.assertEqual(slots[1].slot, 0, 'Second slot should be slot 0');
+    });
+
+    harness.runTest('Save: getSaveSlotInfo returns exists=false for empty slot', (t) => {
+        Game.init();
+        const info = Game.getSaveSlotInfo(5);
+        t.assert(!info.exists, 'Empty slot should have exists=false');
+        t.assertEqual(info.slot, 5, 'Slot number should be returned');
+    });
+
+    harness.runTest('Save: getSaveSlotInfo returns metadata for filled slot', (t) => {
+        Game.init();
+        Game.state.week = 10;
+        Game.save(3);
+
+        const info = Game.getSaveSlotInfo(3);
+        t.assert(info.exists, 'Filled slot should have exists=true');
+        t.assertEqual(info.slot, 3, 'Slot number should match');
+        t.assertEqual(info.meta.week, 10, 'Week should be in metadata');
+    });
+
+    harness.runTest('Save: deleteSave removes save data', (t) => {
+        Game.init();
+        Game.save(2);
+        t.assert(Game.getSaveSlotInfo(2).exists, 'Slot 2 should exist after save');
+
+        Game.deleteSave(2);
+        t.assert(!Game.getSaveSlotInfo(2).exists, 'Slot 2 should not exist after delete');
+    });
+
+    harness.runTest('Save: different slots are independent', (t) => {
+        Game.init();
+        Game.state.week = 3;
+        Game.save(0);
+
+        Game.state.week = 7;
+        Game.save(1);
+
+        const info0 = Game.getSaveSlotInfo(0);
+        const info1 = Game.getSaveSlotInfo(1);
+        t.assertEqual(info0.meta.week, 3, 'Slot 0 should have week 3');
+        t.assertEqual(info1.meta.week, 7, 'Slot 1 should have week 7');
+    });
+
+    harness.runTest('Save: loading old save without pursuits field works', (t) => {
+        Game.init();
+        Game.save(0);
+
+        // Simulate old save without pursuits
+        const key = context.Config.saveKeyPrefix + '0';
+        const savedData = JSON.parse(mockLocalStorage.getItem(key));
+        delete savedData.state.pursuits;
+        mockLocalStorage.setItem(key, JSON.stringify(savedData));
+
+        Game.load(0);
+
+        // Game should still work without pursuits field
+        t.assert(Game.state !== null, 'State should be loaded');
+    });
+
+    harness.runTest('Save: pursuit settings are preserved across save/load', (t) => {
+        const PursuitManager = context.PursuitManager;
+        Game.init();
+
+        // Modify pursuit settings (toggle the burn_midnight_oil pursuit)
+        Game.state.pursuits['burn_midnight_oil'].enabled = true;
+
+        // Save and reinitialize
+        Game.save(0);
+        Game.init();
+
+        // After init, pursuit should be at default (disabled)
+        t.assert(!Game.state.pursuits['burn_midnight_oil'].enabled, 'Pursuit should be disabled after init');
+
+        // Load should restore the enabled state
+        Game.load(0);
+        t.assert(Game.state.pursuits['burn_midnight_oil'].enabled, 'Pursuit should be enabled after load');
+    });
+
     // Print summary
     const success = harness.printSummary();
     process.exit(success ? 0 : 1);

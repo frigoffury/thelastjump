@@ -15,6 +15,7 @@
                 <span id="time-display">Week 1</span>
                 <span id="actions-display">Actions: 3/3</span>
             </div>
+            <button id="system-btn" class="system-btn" title="Menu">&#9776;</button>
         </header>
 
         <main id="game-main">
@@ -35,7 +36,12 @@
         </aside>
     </div>
 
-    <!-- Pursuit Management Modal -->
+    <!-- Modals -->
+    <div id="startup-modal" class="modal-overlay" style="display: none;"></div>
+    <div id="system-modal" class="modal-overlay" style="display: none;"></div>
+    <div id="save-modal" class="modal-overlay" style="display: none;"></div>
+    <div id="load-modal" class="modal-overlay" style="display: none;"></div>
+    <div id="weekend-save-modal" class="modal-overlay" style="display: none;"></div>
     <div id="pursuit-panel" class="modal-overlay" style="display: none;"></div>
 
     <!-- Config & Definitions -->
@@ -60,6 +66,7 @@
     <script src="js/handlers.js"></script>
     <script src="js/character-creation.js"></script>
     <script src="js/pursuit-manager.js"></script>
+    <script src="js/save-manager.js"></script>
     <script src="js/game.js"></script>
     <script src="js/main.js"></script>
 </body>
