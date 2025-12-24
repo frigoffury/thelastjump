@@ -246,11 +246,11 @@ Stories check pursuit state via conditions:
 
 ## Implementation Status
 
-**Implemented** in commit following initial design. Core files:
-- `js/pursuit-manager.js` - Core logic
-- `js/condition-checker.js` - Pursuit conditions
-- `js/effect-executor.js` - Pursuit effects
-- `data/pursuits.json` - Sample pursuits
+**Implemented**. Core files:
+- `js/pursuit-manager.js` - Core logic (~350 lines)
+- `js/condition-checker.js` - Pursuit conditions (pursuitActive, pursuitOption, pursuitHours)
+- `js/effect-executor.js` - Pursuit effects (startPursuit, endPursuit, ensurePossession)
+- `data/pursuits.js` - Pursuit definitions (JS-wrapped JSON for local file:// compatibility)
 
 ### Implementation Notes
 

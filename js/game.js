@@ -30,6 +30,7 @@ const Game = {
         this.state = {
             week: 1,
             actionsRemaining: Config.actionsPerPeriod,
+            weekStartActions: Config.actionsPerPeriod,  // Track total actions for week progress
             jumpCount: 0,
             playerId: null,
             characters: {},
@@ -37,6 +38,7 @@ const Game = {
             storylines: {},
             pursuits: {},
             completedEvents: [],
+            eventSchedule: {},  // Tracks event rolls and trigger times for current week
             flags: {}
         };
         this.state.playerId = this.createCharacter('player', 'You');
@@ -272,9 +274,48 @@ const Game = {
             this.state.actionsRemaining = Config.actionsPerPeriod;
         }
 
+        // Reset event schedule for new week and record total actions
+        this.state.eventSchedule = {};
+        this.state.weekStartActions = this.state.actionsRemaining;
+
         this.evaluateEvents();
         this.evaluateStorylines();
         this.refreshDisplay();
+    },
+
+    // Calculate progress through the week (0 = start, 1 = end)
+    getWeekProgress() {
+        const used = this.state.weekStartActions - this.state.actionsRemaining;
+        // +1 in denominator accounts for the week-end evaluation point
+        return used / (this.state.weekStartActions + 1);
+    },
+
+    // Roll probabilistic events and schedule trigger points
+    // Events rolled in [0,1]; if trigger point < current progress, they miss this week
+    scheduleNewEvents() {
+        const progress = this.getWeekProgress();
+
+        for (const [id, event] of Object.entries(Events)) {
+            // Skip if already scheduled, completed, or not eligible
+            if (this.state.eventSchedule[id] !== undefined) continue;
+            if (this.state.completedEvents.includes(id)) continue;
+            if (!ConditionChecker.check(event.conditions, this)) continue;
+
+            // Probability 1 (or undefined) means always eligible, no scheduling needed
+            if (!event.probability || event.probability >= 1) continue;
+
+            // Roll the probability
+            if (this.random() > event.probability) {
+                // Failed roll - mark as checked so we don't re-roll
+                this.state.eventSchedule[id] = { passed: false };
+            } else {
+                // Passed roll - assign random trigger point in [0, 1]
+                const triggerAt = this.random();
+                // If triggerAt < progress, event misses this week (pro-rated probability)
+                const missed = triggerAt < progress;
+                this.state.eventSchedule[id] = { passed: true, triggerAt, triggered: false, missed };
+            }
+        }
     },
 
     useAction(cost = 1) {
@@ -286,17 +327,38 @@ const Game = {
 
     // === Events ===
     evaluateEvents() {
+        // Schedule any newly eligible probabilistic events
+        this.scheduleNewEvents();
+
+        const progress = this.getWeekProgress();
         const eligible = [];
+
         for (const [id, event] of Object.entries(Events)) {
             if (this.state.completedEvents.includes(id)) continue;
             if (!ConditionChecker.check(event.conditions, this)) continue;
-            if (event.probability < 1 && this.random() > event.probability) continue;
+
+            // Check probabilistic events against schedule
+            if (event.probability && event.probability < 1) {
+                const schedule = this.state.eventSchedule[id];
+                // Must have passed roll, not missed, reached trigger time, and not yet triggered
+                if (!schedule || !schedule.passed) continue;
+                if (schedule.missed) continue;
+                if (schedule.triggerAt > progress) continue;
+                if (schedule.triggered) continue;
+            }
+
             eligible.push({ id, event });
         }
+
         if (eligible.length === 0) return;
 
         eligible.sort((a, b) => (b.event.priority || 0) - (a.event.priority || 0));
         const winner = eligible[0];
+
+        // Mark scheduled event as triggered
+        if (this.state.eventSchedule[winner.id]) {
+            this.state.eventSchedule[winner.id].triggered = true;
+        }
 
         // Handle superseded events
         for (let i = 1; i < eligible.length; i++) {

@@ -1230,6 +1230,120 @@ function runTests() {
         t.assert(Game.state.pursuits['burn_midnight_oil'].enabled, 'Pursuit should be enabled after load');
     });
 
+    // === Event Scheduling Tests ===
+
+    harness.runTest('Event: probabilistic event only rolled once per week', (t) => {
+        Game.init();
+        // Create a test event with 50% probability
+        context.Events['test_prob_event'] = {
+            id: 'test_prob_event',
+            probability: 0.5,
+            conditions: {},
+            text: 'Test event'
+        };
+
+        // First roll fails (random returns 0.6 > 0.5)
+        // Second random is for trigger time (won't matter since it failed)
+        t.setRandomSequence([0.6]);
+
+        Game.evaluateEvents();
+        t.assert(Game.state.eventSchedule['test_prob_event'], 'Event should be in schedule');
+        t.assert(!Game.state.eventSchedule['test_prob_event'].passed, 'Event should have failed roll');
+
+        // Subsequent evaluations shouldn't re-roll
+        t.setRandomSequence([0.1]); // Would pass if re-rolled
+        Game.evaluateEvents();
+        t.assert(!Game.state.eventSchedule['test_prob_event'].passed, 'Event should still be failed');
+
+        delete context.Events['test_prob_event'];
+    });
+
+    harness.runTest('Event: scheduled event triggers at correct progress point', (t) => {
+        Game.init();
+        // Create test event
+        context.Events['test_timed_event'] = {
+            id: 'test_timed_event',
+            probability: 0.5,
+            conditions: {},
+            handler: 'testEventHandler'
+        };
+        let eventTriggered = false;
+        context.Handlers['testEventHandler'] = () => { eventTriggered = true; return null; };
+
+        // Roll passes (0.3 < 0.5), trigger at 0.6 progress
+        t.setRandomSequence([0.3, 0.6]);
+
+        // With 3 actions: progress after action 1 = 1/4 = 0.25
+        Game.startWeek();
+        t.assert(!eventTriggered, 'Event should not trigger at week start (progress 0)');
+
+        Game.useAction(1);
+        t.assert(!eventTriggered, 'Event should not trigger at progress 0.25');
+
+        // Progress after action 2 = 2/4 = 0.5
+        Game.useAction(1);
+        t.assert(!eventTriggered, 'Event should not trigger at progress 0.5');
+
+        // Progress after action 3 = 3/4 = 0.75 >= 0.6
+        Game.useAction(1);
+        t.assert(eventTriggered, 'Event should trigger at progress 0.75');
+
+        delete context.Events['test_timed_event'];
+        delete context.Handlers['testEventHandler'];
+    });
+
+    harness.runTest('Event: mid-week eligible event has pro-rated probability', (t) => {
+        Game.init();
+        Game.startWeek();
+        Game.useAction(1); // Progress = 0.25
+        Game.useAction(1); // Progress = 0.5
+
+        // Now add an event that just became eligible (prob < 1 so it gets scheduled)
+        context.Events['test_midweek_event'] = {
+            id: 'test_midweek_event',
+            probability: 0.9,
+            conditions: {},
+            handler: 'testMidweekHandler'
+        };
+        let eventTriggered = false;
+        context.Handlers['testMidweekHandler'] = () => { eventTriggered = true; return null; };
+
+        // Roll passes (0.1 < 0.9), but trigger point is 0.3 (before current progress of 0.5)
+        t.setRandomSequence([0.1, 0.3]);
+
+        Game.evaluateEvents();
+        // Event was scheduled but triggerAt (0.3) < progress (0.5), so it misses this week
+        t.assert(Game.state.eventSchedule['test_midweek_event'].passed, 'Event should have passed roll');
+        t.assert(Game.state.eventSchedule['test_midweek_event'].missed, 'Event should be marked as missed');
+        t.assert(!eventTriggered, 'Event should not trigger (scheduled before current progress)');
+
+        delete context.Events['test_midweek_event'];
+        delete context.Handlers['testMidweekHandler'];
+    });
+
+    harness.runTest('Event: schedule resets each week', (t) => {
+        Game.init();
+        context.Events['test_weekly_reset'] = {
+            id: 'test_weekly_reset',
+            probability: 0.5,
+            conditions: {},
+            text: 'Test'
+        };
+
+        // Fail the roll this week
+        t.setRandomSequence([0.9]);
+        Game.startWeek();
+        t.assert(!Game.state.eventSchedule['test_weekly_reset'].passed, 'Should fail first week');
+
+        // End week and start new one - should get fresh roll
+        Game.state.actionsRemaining = 0;
+        t.setRandomSequence([0.1, 0.5]); // Pass roll, trigger at 0.5
+        Game.startWeek();
+        t.assert(Game.state.eventSchedule['test_weekly_reset'].passed, 'Should pass second week');
+
+        delete context.Events['test_weekly_reset'];
+    });
+
     // Print summary
     const success = harness.printSummary();
     process.exit(success ? 0 : 1);
