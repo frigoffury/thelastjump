@@ -191,6 +191,77 @@ Before attempting a skill check, players can see an estimate of their chances. T
 | Likely | Average result above difficulty |
 | Very likely | Average result above difficulty by significant margin |
 
+## Deep Memory Skills
+
+Player characters are Jumpers who have lived many lives across different identities. They can draw on skills from past lives, but doing so is risky—it attracts timecop attention and leaves traces in their brain that investigators could detect.
+
+### Two Skill Layers
+
+- **Current identity skills**: What the player has learned in their current life. Safe to use, grow through play.
+- **Deep memory skills**: Expertise from past lives. Powerful but risky.
+
+### Deep Skill Bonus
+
+When a player chooses to tap deep memory before a skill check:
+
+| Condition | Bonus |
+|-----------|-------|
+| Has matching deep skill specialty | +100 |
+| No matching specialty (generic past-life experience) | +30 |
+
+All Jumpers can tap deep memory for the +30 generic bonus. Specialties chosen at character creation provide the +100 bonus for specific skills.
+
+### Trace Types
+
+Two trace types track deep skill exposure:
+
+- **timecop_suspicion**: Risk of attracting timecop attention
+- **deepskill_use**: Evidence left in the brain detectable during close examination
+
+Both traces are only added when explicitly specified in story effects—neither is automatic. A clean getaway might add no traces. Players may also learn techniques to obscure certain neurological traces.
+
+Both trace types degrade slowly over time and can be impacted by other actions.
+
+### Active vs Passive Use
+
+**Active use**: Player explicitly chooses to tap deep memory before a roll. Adds bonus; trace costs specified by the triggering action or story.
+
+**Passive check**: Stories can check `hasDeepSkill` to determine consequences without the player actively choosing. Trace costs are only added if the story explicitly includes them in effects.
+
+### Example: Branching by Skill Type
+
+```json
+{
+  "id": "ambush",
+  "branches": [
+    {
+      "skillCheck": {
+        "skill": "unarmed_combat",
+        "dice": "2d6",
+        "difficulty": 50
+      },
+      "onSuccess": {
+        "text": "You fight them off with skills from your current life."
+      }
+    },
+    {
+      "conditions": { "hasDeepSkill": "unarmed_combat" },
+      "text": "Your body moves in ways this identity never learned.",
+      "effects": [
+        { "modifyStat": ["timecop_suspicion", 10] },
+        { "modifyStat": ["deepskill_use", 5] }
+      ]
+    },
+    {
+      "text": "You never see the blade coming.",
+      "effects": [{ "triggerJump": true }]
+    }
+  ]
+}
+```
+
+The story checks current identity skills first, falls back to deep skill with explicit trace costs, then handles the worst outcome.
+
 ## Character Skill Storage
 
 Skills are stored on individual characters in `state.characters[id]`:
@@ -208,6 +279,7 @@ state.characters["char_123"] = {
       hacking: 15
     }
   },
+  deepSkills: ["hacking", "piloting"],  // specialties from past lives
   // ... other character fields
 }
 ```
@@ -217,6 +289,10 @@ When resolving `player.skills.hacking`, the system:
 2. Gets `player.skills.specific.hacking` (15) + `player.skills.general.computers` (40)
 3. Returns effective skill: 55
 
+When tapping deep memory for a hacking check:
+1. Check if `"hacking"` is in `player.deepSkills`
+2. If yes: +100 bonus. If no: +30 bonus (generic past-life experience)
+
 ## Implementation Status
 
 **Not yet implemented.** This document describes the target design.
@@ -225,9 +301,11 @@ When resolving `player.skills.hacking`, the system:
 
 - **Skill definitions file**: Exact structure and location of `data/skills.js`
 - **Full skill list**: Which general and specific skills exist in the game
+- **Deep skill specialty list**: Which specialties are available at character creation
 
 ### Deferred
 
 - **Skill improvement**: Mechanics for how skills increase over time (game-specific rules apply)
-- **Low-skill attempt cost**: Additional cost for attempting checks where skill level is insufficient
 - **Opposed rolls**: Multi-participant checks where difficulty is determined by opposing side's rolls
+- **Trace degradation**: How timecop_suspicion and deepskill_use decay over time
+- **Trace mitigation**: Actions or techniques that reduce or obscure traces
