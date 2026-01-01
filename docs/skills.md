@@ -21,39 +21,81 @@ A character with `computers: 40` and `hacking: 15` has an effective hacking skil
 
 Specific skills are gated on minimum general skill levels. You can't learn `hacking` without a baseline in `computers`. The acquisition requirements are defined per specific skill.
 
-## Skill Definitions
+## General Skills
 
-Skills are declared in a data file that defines their type and relationships.
+### Physical (5)
+
+| Skill | Description |
+|-------|-------------|
+| Athletics | Running, jumping, climbing, swimming |
+| Stealth | Sneaking, hiding, shadowing, avoiding detection |
+| Melee | Fighting with weapons or body (unarmed is a specific skill) |
+| Firearms | Shooting guns and similar modern weapons |
+| Projectiles | Archery, throwing knives, traditional ranged weapons |
+
+### Social (4)
+
+| Skill | Description |
+|-------|-------------|
+| Persuasion | Convincing, negotiating, charming |
+| Deception | Lying, acting, misdirection |
+| Intimidation | Threatening, coercing |
+| Empathy | Reading emotions, building rapport |
+
+### Technical (6)
+
+| Skill | Description |
+|-------|-------------|
+| Computers | Operating systems, hacking, digital manipulation |
+| Mechanics | Machines, vehicles, locks, physical systems |
+| Electronics | Circuits, devices, wiring |
+| Treatment | First aid, stabilizing injuries, medical procedures |
+| Driving | Ground vehicles, pursuit, evasion |
+| Piloting | Aircraft, watercraft, spacecraft |
+
+### Mental (3)
+
+| Skill | Description |
+|-------|-------------|
+| Calculation | Quick mental math, numerical analysis |
+| Analysis | Puzzle-solving, pattern recognition, strategic thinking |
+| Jumper Awareness | Integrating past-life perception without leaving traces |
+
+**Total: 18 general skills**
+
+## Specific Skills (Examples)
+
+Specific skills are additive bonuses under a parent general skill.
+
+| Specific Skill | Parent | Description |
+|----------------|--------|-------------|
+| Unarmed | Melee | Hand-to-hand combat without weapons |
+| Sleight of Hand | Stealth | Pickpocketing, palming, prestidigitation |
+| Hacking | Computers | Breaking into secure systems |
+| Deep Integration | Jumper Awareness | Letting past knowledge inform current-identity intuitions safely |
+| Controlled Recall | Jumper Awareness | Calling on past experience for active insight without trace |
+
+## Skill Definition Format
+
+Skills are declared in a data file:
 
 ```javascript
-// data/skills.js (proposed structure)
+// data/skills.js
 Skills = {
-  // General skills
-  "computers": {
-    "type": "general",
-    "title": "Computers",
-    "description": "General computing knowledge and ability"
-  },
+  // General skill
   "athletics": {
     "type": "general",
     "title": "Athletics",
-    "description": "Physical fitness and coordination"
+    "description": "Running, jumping, climbing, swimming"
   },
 
-  // Specific skills (reference their parent general skill)
-  "hacking": {
+  // Specific skill (references parent)
+  "unarmed": {
     "type": "specific",
-    "parent": "computers",
-    "title": "Hacking",
-    "description": "Breaking into systems",
-    "requirements": { "skill": ["computers", ">=", 20] }
-  },
-  "sprinting": {
-    "type": "specific",
-    "parent": "athletics",
-    "title": "Sprinting",
-    "description": "Short bursts of speed",
-    "requirements": { "skill": ["athletics", ">=", 15] }
+    "parent": "melee",
+    "title": "Unarmed",
+    "description": "Hand-to-hand combat without weapons",
+    "requirements": { "skill": ["melee", ">=", 15] }
   }
 }
 ```
@@ -236,7 +278,7 @@ Both trace types degrade slowly over time and can be impacted by other actions.
   "branches": [
     {
       "skillCheck": {
-        "skill": "unarmed_combat",
+        "skill": "unarmed",
         "dice": "2d6",
         "difficulty": 50
       },
@@ -245,7 +287,7 @@ Both trace types degrade slowly over time and can be impacted by other actions.
       }
     },
     {
-      "conditions": { "hasDeepSkill": "unarmed_combat" },
+      "conditions": { "hasDeepSkill": "unarmed" },
       "text": "Your body moves in ways this identity never learned.",
       "effects": [
         { "modifyStat": ["timecop_suspicion", 10] },
@@ -299,8 +341,8 @@ When tapping deep memory for a hacking check:
 
 ### To Be Finalized
 
-- **Skill definitions file**: Exact structure and location of `data/skills.js`
-- **Full skill list**: Which general and specific skills exist in the game
+- **Skill definitions file**: Create `data/skills.js` with full definitions
+- **Complete specific skill list**: Define all specific skills under each general skill
 - **Deep skill specialty list**: Which specialties are available at character creation
 
 ### Deferred
