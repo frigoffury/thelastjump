@@ -63,15 +63,38 @@ Specific skills are gated on minimum general skill levels. You can't learn `hack
 
 **Total: 18 general skills**
 
-## Specific Skills (Examples)
+## Specific Skills
 
 Specific skills are additive bonuses under a parent general skill.
+
+### Physical
 
 | Specific Skill | Parent | Description |
 |----------------|--------|-------------|
 | Unarmed | Melee | Hand-to-hand combat without weapons |
+| Blades | Melee | Knives, swords, edged weapons |
 | Sleight of Hand | Stealth | Pickpocketing, palming, prestidigitation |
+| Parkour | Athletics | Urban movement, vaulting, climbing in motion |
+
+### Social
+
+| Specific Skill | Parent | Description |
+|----------------|--------|-------------|
+| Contract Negotiation | Persuasion | Formal bargaining, deal-making, legal agreements |
+| Disguise | Deception | Altering appearance, adopting personas |
+
+### Technical
+
+| Specific Skill | Parent | Description |
+|----------------|--------|-------------|
 | Hacking | Computers | Breaking into secure systems |
+| Lockpicking | Mechanics | Bypassing physical locks |
+| Security Systems | Electronics | Alarms, cameras, electronic locks |
+
+### Mental
+
+| Specific Skill | Parent | Description |
+|----------------|--------|-------------|
 | Deep Integration | Jumper Awareness | Letting past knowledge inform current-identity intuitions safely |
 | Controlled Recall | Jumper Awareness | Calling on past experience for active insight without trace |
 
