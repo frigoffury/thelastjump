@@ -244,6 +244,43 @@ Difficulty can reference entity skills with simple arithmetic:
 - Reference: `"opponent.skills.hacking"`
 - Expression: `"opponent.skills.hacking + 10"`, `"guard.skills.perception - 5"`
 
+### Composite Checks
+
+Complex actions may involve multiple factors. Use `bonuses` to add stat contributions to the player's roll, and `modifiers` to adjust difficulty based on conditions.
+
+```json
+{
+  "skillCheck": {
+    "skill": "parkour",
+    "dice": "2d6",
+    "difficulty": 50,
+    "bonuses": [
+      { "stat": "strength", "scale": 0.3 }
+    ],
+    "modifiers": [
+      { "condition": { "stat": ["health", "<", 50] }, "add": 10 },
+      { "condition": { "stat": ["health", "<", 20] }, "add": 15 },
+      { "condition": { "hasFlag": "wearing_heels" }, "add": 10 },
+      { "condition": { "hasFlag": "wet_surface" }, "add": 5 },
+      { "condition": { "hasFlag": "padded_clothes" }, "add": -5 }
+    ]
+  }
+}
+```
+
+**Resolution:**
+```
+playerRoll = skill + sum(stat × scale for each bonus) + diceRoll
+effectiveDifficulty = difficulty + sum(add for each matching modifier)
+outcome = compare playerRoll vs effectiveDifficulty
+```
+
+**Bonuses**: Stats that contribute to the player's roll (scaled).
+
+**Modifiers**: Conditions that adjust difficulty. Positive values make it harder, negative values make it easier. All matching modifiers stack cumulatively.
+
+In the example above, a character with health at 15 triggers both `< 50` (+10) and `< 20` (+15), adding +25 to difficulty. Wearing padded clothes offsets by -5.
+
 ## Showing Odds
 
 Before attempting a skill check, players can see an estimate of their chances. The system compares `effectiveSkill + averageDiceRoll` against the difficulty thresholds.
