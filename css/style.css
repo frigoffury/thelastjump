@@ -96,6 +96,11 @@ body {
     background: #e94560;
 }
 
+.choice-btn.selected {
+    background: #e94560;
+    border-color: #fff;
+}
+
 .choice-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;

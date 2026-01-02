@@ -92,7 +92,11 @@ const JumperStrategies = {
 
 // Configuration for the jumper creation flow
 const JumperCreationConfig = {
-    skillsPerStrategy: 2,      // How many deep skills to pick per strategy selection
+    pointsPerStrategy: 2,      // Point budget per strategy selection
     strategyPicks: 2,          // How many strategy selections (can repeat)
-    personalInterestPicks: 1   // How many skills from outside strategies
+    personalInterestPoints: 1, // Point budget for personal interest skill
+    skillCosts: {
+        general: 2,            // General skills cost 2 points
+        specific: 1            // Specific skills cost 1 point
+    }
 };

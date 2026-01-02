@@ -35,17 +35,27 @@ const JumperCreation = {
     // Callback when complete
     onComplete: null,
 
+    // Points spent in current multi-select step
+    pointsSpent: 0,
+
     // Step definitions
     steps: [
         { id: 'gender', type: 'single', title: 'Who Are You?' },
         { id: 'attraction', type: 'multi', title: 'Who Do You Love?', min: 1, max: 3 },
         { id: 'aspiration', type: 'single', title: 'What Do You Hope For?' },
         { id: 'strategy1', type: 'single', title: 'Your First Well-Trod Path' },
-        { id: 'skills1', type: 'multi', title: 'Skills From Your Path', exact: 2 },
+        { id: 'skills1', type: 'points', title: 'Skills From Your Path' },
         { id: 'strategy2', type: 'single', title: 'Your Second Well-Trod Path' },
-        { id: 'skills2', type: 'multi', title: 'More Skills From Your Path', exact: 2 },
-        { id: 'personal', type: 'single', title: 'A Personal Interest' }
+        { id: 'skills2', type: 'points', title: 'More Skills From Your Path' },
+        { id: 'personal', type: 'points', title: 'A Personal Interest' }
     ],
+
+    // Get the cost of a skill
+    getSkillCost(skillId) {
+        const skillDef = typeof SkillDefinitions !== 'undefined' ? SkillDefinitions[skillId] : null;
+        const isSpecific = skillDef?.type === 'specific';
+        return isSpecific ? JumperCreationConfig.skillCosts.specific : JumperCreationConfig.skillCosts.general;
+    },
 
     // Start the creation flow
     start(options = {}) {
@@ -53,6 +63,7 @@ const JumperCreation = {
         this.onComplete = options.onComplete || null;
         this.selectedSkills = [];
         this.multiSelectState = [];
+        this.pointsSpent = 0;
         this.pendingIdentity = {
             coreGender: null,
             attractedTo: [],
@@ -73,6 +84,7 @@ const JumperCreation = {
 
         const step = this.steps[this.currentStep];
         this.multiSelectState = [];
+        this.pointsSpent = 0;
 
         switch (step.id) {
             case 'gender':
@@ -194,77 +206,79 @@ const JumperCreation = {
         const strategyIndex = this.currentStep === 4 ? 0 : 1; // skills1 = strategy[0], skills2 = strategy[1]
         const strategyId = this.pendingIdentity.strategies[strategyIndex];
         const strategy = JumperStrategies[strategyId];
+        const budget = JumperCreationConfig.pointsPerStrategy;
 
         // Get available skills (from strategy, not already selected)
         const availableSkills = strategy.skills.filter(s => !this.selectedSkills.includes(s));
 
         if (availableSkills.length === 0) {
-            // No skills left in this strategy (shouldn't happen with 5 skills and 2 picks max)
             this.currentStep++;
             this.presentStep();
             return;
         }
 
-        const needed = Math.min(JumperCreationConfig.skillsPerStrategy, availableSkills.length);
-
-        Game.renderStory(`From your time as ${strategy.title}, which skills became second nature? Choose ${needed}.`);
+        Game.renderStory(`From your time as ${strategy.title}, which skills became second nature? You have ${budget} points to spend.`);
 
         const container = document.getElementById('choices-container');
         container.innerHTML = '';
 
         for (const skillId of availableSkills) {
+            const cost = this.getSkillCost(skillId);
             const skillDef = typeof SkillDefinitions !== 'undefined' ? SkillDefinitions[skillId] : null;
             const title = skillDef?.title || skillId;
-            const isSpecific = skillDef?.type === 'specific';
 
             const btn = document.createElement('button');
             btn.className = 'choice-btn';
-            btn.textContent = title + (isSpecific ? '' : ' (general)');
+            btn.textContent = `${title} (${cost} pt${cost > 1 ? 's' : ''})`;
             btn.dataset.optionId = skillId;
-            btn.addEventListener('click', () => this.toggleMultiSelect(btn, skillId));
+            btn.dataset.cost = cost;
+            btn.addEventListener('click', () => this.toggleSkillSelect(btn, skillId, cost, budget));
             container.appendChild(btn);
         }
 
-        // Add continue button with exact count required
-        this.addContinueButton(container, needed, needed);
+        // Add points display and continue button
+        this.addPointsContinueButton(container, budget);
     },
 
     // Render personal interest selection
     renderPersonalStep() {
+        const budget = JumperCreationConfig.personalInterestPoints;
+
         // Get all skills not yet selected
         const allSkills = this.getAllSkillIds();
         const availableSkills = allSkills.filter(s => !this.selectedSkills.includes(s));
 
-        if (availableSkills.length === 0) {
-            // No skills left for personal interest
+        // Filter to only skills we can afford
+        const affordableSkills = availableSkills.filter(s => this.getSkillCost(s) <= budget);
+
+        if (affordableSkills.length === 0) {
+            // No affordable skills left for personal interest
             this.currentStep++;
             this.presentStep();
             return;
         }
 
-        Game.renderStory('Beyond your practiced approaches, what personal interest have you cultivated?');
+        Game.renderStory(`Beyond your practiced approaches, what personal interest have you cultivated? You have ${budget} point${budget > 1 ? 's' : ''} to spend.`);
 
         const container = document.getElementById('choices-container');
         container.innerHTML = '';
 
-        for (const skillId of availableSkills) {
+        for (const skillId of affordableSkills) {
+            const cost = this.getSkillCost(skillId);
             const skillDef = typeof SkillDefinitions !== 'undefined' ? SkillDefinitions[skillId] : null;
             const title = skillDef?.title || skillId;
-            const isSpecific = skillDef?.type === 'specific';
 
             const btn = document.createElement('button');
             btn.className = 'choice-btn';
-            btn.textContent = title + (isSpecific ? '' : ' (general)');
-            btn.addEventListener('click', () => this.selectPersonalInterest(skillId));
+            btn.textContent = `${title} (${cost} pt${cost > 1 ? 's' : ''})`;
+            btn.dataset.optionId = skillId;
+            btn.dataset.cost = cost;
+            btn.addEventListener('click', () => this.toggleSkillSelect(btn, skillId, cost, budget));
             container.appendChild(btn);
         }
-    },
 
-    selectPersonalInterest(skillId) {
-        this.selectedSkills.push(skillId);
-        this.pendingIdentity.deepSkills = [...this.selectedSkills];
-        this.currentStep++;
-        this.presentStep();
+        // Add points display and continue button
+        this.addPointsContinueButton(container, budget);
     },
 
     // Get all skill IDs from all strategies (union)
@@ -278,7 +292,7 @@ const JumperCreation = {
         return Array.from(allSkills);
     },
 
-    // Toggle a multi-select option
+    // Toggle a multi-select option (for non-skill selections like attractions)
     toggleMultiSelect(btn, optionId) {
         const index = this.multiSelectState.indexOf(optionId);
         if (index >= 0) {
@@ -293,6 +307,41 @@ const JumperCreation = {
         this.updateContinueButton();
     },
 
+    // Toggle a skill selection with point costs
+    toggleSkillSelect(btn, skillId, cost, budget) {
+        const index = this.multiSelectState.indexOf(skillId);
+        if (index >= 0) {
+            // Deselect
+            this.multiSelectState.splice(index, 1);
+            this.pointsSpent -= cost;
+            btn.classList.remove('selected');
+        } else {
+            // Only select if we can afford it
+            if (this.pointsSpent + cost <= budget) {
+                this.multiSelectState.push(skillId);
+                this.pointsSpent += cost;
+                btn.classList.add('selected');
+            }
+        }
+
+        // Update button states (disable unaffordable)
+        this.updateSkillButtons(budget);
+        this.updatePointsContinueButton(budget);
+    },
+
+    // Update skill buttons to disable unaffordable ones
+    updateSkillButtons(budget) {
+        const buttons = document.querySelectorAll('.choice-btn[data-cost]');
+        const remaining = budget - this.pointsSpent;
+
+        for (const btn of buttons) {
+            const cost = parseInt(btn.dataset.cost);
+            const isSelected = btn.classList.contains('selected');
+            // Disable if can't afford and not already selected
+            btn.disabled = !isSelected && cost > remaining;
+        }
+    },
+
     // Add continue button for multi-select steps
     addContinueButton(container, min, max) {
         const btn = document.createElement('button');
@@ -303,6 +352,37 @@ const JumperCreation = {
         btn.dataset.max = max;
         btn.addEventListener('click', () => this.confirmMultiSelect());
         container.appendChild(btn);
+    },
+
+    // Add continue button for points-based selection
+    addPointsContinueButton(container, budget) {
+        const display = document.createElement('div');
+        display.className = 'points-display';
+        display.style.cssText = 'color: #aaa; font-size: 0.9rem; margin: 0.5rem 0;';
+        display.textContent = `Points: 0/${budget} spent`;
+        container.appendChild(display);
+
+        const btn = document.createElement('button');
+        btn.className = 'choice-btn continue-btn';
+        btn.textContent = 'Continue';
+        btn.disabled = true;
+        btn.dataset.budget = budget;
+        btn.addEventListener('click', () => this.confirmMultiSelect());
+        container.appendChild(btn);
+    },
+
+    // Update continue button and display for points-based selection
+    updatePointsContinueButton(budget) {
+        const display = document.querySelector('.points-display');
+        const btn = document.querySelector('.continue-btn');
+        if (!btn) return;
+
+        if (display) {
+            display.textContent = `Points: ${this.pointsSpent}/${budget} spent`;
+        }
+
+        // Enable continue if at least 1 skill selected
+        btn.disabled = this.multiSelectState.length === 0;
     },
 
     // Update continue button enabled state
@@ -327,7 +407,8 @@ const JumperCreation = {
                 break;
             case 'skills1':
             case 'skills2':
-                // Add selected skills to both selectedSkills (tracking) and deepSkills
+            case 'personal':
+                // Add selected skills to tracking array
                 for (const skillId of this.multiSelectState) {
                     this.selectedSkills.push(skillId);
                 }
@@ -367,6 +448,7 @@ const JumperCreation = {
         this.pendingIdentity = null;
         this.selectedSkills = [];
         this.multiSelectState = [];
+        this.pointsSpent = 0;
         this.onComplete = null;
     }
 };

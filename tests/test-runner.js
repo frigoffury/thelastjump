@@ -286,13 +286,14 @@ function runTests() {
     // ============================================================
 
     // Helper: Complete jumper identity step to get to character creation
+    // All specific skills (1 pt each) to fit 5-point budget (2+2+1)
     function completeJumperIdentity(game) {
         game.state.jumperIdentity = {
             coreGender: 'female',
             attractedTo: ['men'],
             aspirations: ['find_peace'],
             strategies: ['shadow', 'operator'],
-            deepSkills: ['stealth', 'lockpicking', 'hacking', 'security_systems', 'parkour']
+            deepSkills: ['sleight_of_hand', 'lockpicking', 'hacking', 'security_systems', 'parkour']
         };
         for (const skill of game.state.jumperIdentity.deepSkills) {
             game.addDeepSkill(game.state.playerId, skill);
@@ -1272,22 +1273,24 @@ function runTests() {
     harness.runTest('JumperIdentity: creation config', (t) => {
         const config = context.JumperCreationConfig;
         t.assert(config, 'JumperCreationConfig should exist');
-        t.assertEqual(config.skillsPerStrategy, 2, 'Skills per strategy should be 2');
+        t.assertEqual(config.pointsPerStrategy, 2, 'Points per strategy should be 2');
         t.assertEqual(config.strategyPicks, 2, 'Strategy picks should be 2');
-        t.assertEqual(config.personalInterestPicks, 1, 'Personal interest picks should be 1');
+        t.assertEqual(config.personalInterestPoints, 1, 'Personal interest points should be 1');
+        t.assertEqual(config.skillCosts.general, 2, 'General skills cost 2 points');
+        t.assertEqual(config.skillCosts.specific, 1, 'Specific skills cost 1 point');
     });
 
     harness.runTest('JumperIdentity: deep skills sync to player', (t) => {
         Game.init();
         const pid = Game.state.playerId;
 
-        // Manually set jumper identity with deep skills
+        // Manually set jumper identity with deep skills (all specific = 5 pts)
         Game.state.jumperIdentity = {
             coreGender: 'female',
             attractedTo: ['women'],
             aspirations: ['find_peace'],
             strategies: ['shadow', 'shadow'],
-            deepSkills: ['lockpicking', 'disguise', 'stealth', 'sleight_of_hand', 'parkour']
+            deepSkills: ['lockpicking', 'disguise', 'security_systems', 'sleight_of_hand', 'parkour']
         };
 
         // Sync skills to player
@@ -1298,7 +1301,7 @@ function runTests() {
         // Verify deep skills on player
         t.assert(Game.hasDeepSkill(pid, 'lockpicking'), 'Player should have lockpicking deep skill');
         t.assert(Game.hasDeepSkill(pid, 'disguise'), 'Player should have disguise deep skill');
-        t.assert(Game.hasDeepSkill(pid, 'stealth'), 'Player should have stealth deep skill');
+        t.assert(Game.hasDeepSkill(pid, 'security_systems'), 'Player should have security_systems deep skill');
         t.assert(Game.hasDeepSkill(pid, 'sleight_of_hand'), 'Player should have sleight_of_hand deep skill');
         t.assert(Game.hasDeepSkill(pid, 'parkour'), 'Player should have parkour deep skill');
     });
@@ -1347,13 +1350,13 @@ function runTests() {
             'First run: starts at jumper_identity'
         );
 
-        // Set up jumper identity (simulating the creation flow)
+        // Set up jumper identity (simulating the creation flow, all specific = 5 pts)
         Game.state.jumperIdentity = {
             coreGender: 'female',
             attractedTo: ['men', 'women'],
             aspirations: ['find_peace'],
             strategies: ['shadow', 'face'],
-            deepSkills: ['lockpicking', 'disguise', 'stealth', 'contract_negotiation', 'parkour']
+            deepSkills: ['lockpicking', 'disguise', 'sleight_of_hand', 'contract_negotiation', 'parkour']
         };
         for (const skill of Game.state.jumperIdentity.deepSkills) {
             Game.addDeepSkill(Game.state.playerId, skill);
