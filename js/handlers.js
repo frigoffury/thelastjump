@@ -47,6 +47,19 @@ const Handlers = {
         return { async: true, skipEffects: true };
     },
 
+    // Start the jumper identity creation flow (persistent identity)
+    // This happens before character creation and defines the Jumper's core self
+    startJumperCreation(game, action, { onComplete }) {
+        JumperCreation.start({
+            onComplete: (identity) => {
+                game.setFlag('jumper_identity_created');
+                // Deep skills are synced to player in JumperCreation.applyAndFinish()
+                onComplete();
+            }
+        });
+        return { async: true, skipEffects: true };
+    },
+
     // === Event Handlers ===
 
     // Process rent payments for all homes

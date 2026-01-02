@@ -33,6 +33,7 @@ const Game = {
             weekStartActions: Config.actionsPerPeriod,  // Track total actions for week progress
             jumpCount: 0,
             playerId: null,
+            jumperIdentity: null,  // Persistent identity across all iterations
             characters: {},
             objects: {},
             storylines: {},

@@ -397,13 +397,14 @@ When tapping deep memory for a hacking check:
 
 ## Implementation Status
 
-**Not yet implemented.** This document describes the target design.
+**Implemented.** Core skill system and ability checks are functional.
 
-### To Be Finalized
+### Implemented
 
-- **Skill definitions file**: Create `data/skills.js` with full definitions
-- **Complete specific skill list**: Define all specific skills under each general skill
-- **Deep skill specialty list**: Which specialties are available at character creation
+- **Skill definitions file**: `data/skills.js` with general and specific skill definitions
+- **Ability checks**: `js/ability-checker.js` handles dice rolls, bonuses, modifiers, and crushing outcomes
+- **Check definitions**: `data/ability-checks.js` for reusable named checks
+- **Deep skill specialties**: Selected during jumper identity creation via strategies (see `data/jumper-identity.js`)
 
 ### Deferred
 

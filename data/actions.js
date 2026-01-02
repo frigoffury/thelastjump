@@ -3,6 +3,16 @@
  */
 
 Actions = {
+    "rememberSelf": {
+        "id": "rememberSelf",
+        "text": "Remember who you are",
+        "actionCost": 0,
+        "conditions": {
+            "inChapter": { "intro": "jumper_identity" }
+        },
+        "handler": "startJumperCreation"
+    },
+
     "beginJourney": {
         "id": "beginJourney",
         "text": "Begin your journey",

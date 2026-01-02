@@ -217,7 +217,13 @@ function loadGameFiles() {
         EffectExecutor: null,
         Handlers: null,
         PursuitManager: null,
-        AbilityChecker: null
+        AbilityChecker: null,
+        JumperGenderOptions: null,
+        JumperAttractionOptions: null,
+        JumperAspirations: null,
+        JumperStrategies: null,
+        JumperCreationConfig: null,
+        JumperCreation: null
     });
 
     const basePath = path.join(__dirname, '..');
@@ -227,6 +233,7 @@ function loadGameFiles() {
         'data/stats.js',
         'data/skills.js',
         'data/ability-checks.js',
+        'data/jumper-identity.js',
         'data/templates/characters.js',
         'data/templates/objects.js',
         'data/creation-choices.js',
@@ -240,6 +247,7 @@ function loadGameFiles() {
         'js/effect-executor.js',
         'js/handlers.js',
         'js/character-creation.js',
+        'js/jumper-creation.js',
         'js/pursuit-manager.js',
         'js/game.js'
     ];
@@ -277,6 +285,23 @@ function runTests() {
     // THREAD TEST: Full gameplay integration across all systems
     // ============================================================
 
+    // Helper: Complete jumper identity step to get to character creation
+    function completeJumperIdentity(game) {
+        game.state.jumperIdentity = {
+            coreGender: 'female',
+            attractedTo: ['men'],
+            aspirations: ['find_peace'],
+            strategies: ['shadow', 'operator'],
+            deepSkills: ['stealth', 'lockpicking', 'hacking', 'security_systems', 'parkour']
+        };
+        for (const skill of game.state.jumperIdentity.deepSkills) {
+            game.addDeepSkill(game.state.playerId, skill);
+        }
+        game.setFlag('jumper_identity_created');
+        game.evaluateStorylines();
+        game.refreshDisplay();
+    }
+
     harness.runTest('Thread: full week playthrough with all systems', (t) => {
         // Probabilities: character creation bonuses pass, event passes at 0.3, triggers at 0.7
         t.setRandomSequence([0.3, 0.3, 0.6]);
@@ -285,7 +310,11 @@ function runTests() {
         Game.init();
         t.assertEqual(Game.state.week, 1, 'Should start at week 1');
         t.assert(Game.state.playerId, 'Should have player');
-        t.assertContains(t.getNarrativeText(), 'Jumper', 'Should show intro story');
+        t.assertContains(t.getNarrativeText(), 'remember who you truly are', 'Should show jumper identity intro');
+
+        // --- JUMPER IDENTITY (Skip for this test - manually complete) ---
+        completeJumperIdentity(Game);
+        t.assertContains(t.getNarrativeText(), 'Jumper', 'Should show character creation intro');
 
         // --- CHARACTER CREATION (Handlers, Flags, Stats) ---
         t.clickButton('Begin');
@@ -370,7 +399,12 @@ function runTests() {
         t.assertEqual(Game.state.week, 1, 'Week should be 1');
         t.assertEqual(Game.state.actionsRemaining, 3, 'Should have 3 actions');
         t.assert(Game.state.playerId, 'Should have player ID');
-        t.assertContains(t.getNarrativeText(), 'Jumper', 'Should show intro');
+        t.assertContains(t.getNarrativeText(), 'remember who you truly are', 'Should show jumper identity intro');
+        t.assert(t.getAvailableButtons().some(b => b.includes('Remember')), 'Should have Remember button');
+
+        // After completing jumper identity, should show character creation
+        completeJumperIdentity(Game);
+        t.assertContains(t.getNarrativeText(), 'Jumper', 'Should show character creation intro');
         t.assert(t.getAvailableButtons().some(b => b.includes('Begin')), 'Should have Begin button');
     });
 
@@ -378,6 +412,7 @@ function runTests() {
         // Test probability passing
         t.setRandomSequence([0.3]); // < 0.5, bonus applies
         Game.init();
+        completeJumperIdentity(Game);
         t.clickButton('Begin');
         t.clickButton('Low'); // combat
         t.clickButton('Low'); // affluence - 50% chance +20 health
@@ -389,6 +424,7 @@ function runTests() {
         t.reset();
         t.setRandomSequence([0.7]); // > 0.5, bonus fails
         Game.init();
+        completeJumperIdentity(Game);
         t.clickButton('Begin');
         t.clickButton('Low');
         t.clickButton('Low');
@@ -1195,6 +1231,243 @@ function runTests() {
         odds = AbilityChecker.estimateOdds({ skill: 'stealth', dice: '2d6', difficulty: 40 }, Game);
         // 10 + 7 = 17, margin = -23
         t.assertEqual(odds, 'very unlikely', 'Large disadvantage = very unlikely');
+    });
+
+    // ============================================================
+    // CONSOLIDATED: Jumper Identity
+    // ============================================================
+
+    const JumperCreation = context.JumperCreation;
+
+    harness.runTest('JumperIdentity: state initialization', (t) => {
+        Game.init();
+
+        // jumperIdentity should be null initially
+        t.assertEqual(Game.state.jumperIdentity, null, 'jumperIdentity starts null');
+
+        // Story should start at jumper_identity chapter
+        t.assertEqual(
+            Game.state.storylines['intro'].currentChapter,
+            'jumper_identity',
+            'Intro starts at jumper_identity chapter'
+        );
+    });
+
+    harness.runTest('JumperIdentity: strategy definitions', (t) => {
+        // Verify strategies are defined
+        t.assert(context.JumperStrategies, 'JumperStrategies should exist');
+        t.assert(context.JumperStrategies.shadow, 'Shadow strategy should exist');
+        t.assert(context.JumperStrategies.face, 'Face strategy should exist');
+        t.assert(context.JumperStrategies.operator, 'Operator strategy should exist');
+        t.assert(context.JumperStrategies.blade, 'Blade strategy should exist');
+        t.assert(context.JumperStrategies.runner, 'Runner strategy should exist');
+        t.assert(context.JumperStrategies.mind, 'Mind strategy should exist');
+
+        // Each strategy should have skills
+        for (const [id, strategy] of Object.entries(context.JumperStrategies)) {
+            t.assert(strategy.skills.length >= 4, `${id} should have at least 4 skills`);
+        }
+    });
+
+    harness.runTest('JumperIdentity: creation config', (t) => {
+        const config = context.JumperCreationConfig;
+        t.assert(config, 'JumperCreationConfig should exist');
+        t.assertEqual(config.skillsPerStrategy, 2, 'Skills per strategy should be 2');
+        t.assertEqual(config.strategyPicks, 2, 'Strategy picks should be 2');
+        t.assertEqual(config.personalInterestPicks, 1, 'Personal interest picks should be 1');
+    });
+
+    harness.runTest('JumperIdentity: deep skills sync to player', (t) => {
+        Game.init();
+        const pid = Game.state.playerId;
+
+        // Manually set jumper identity with deep skills
+        Game.state.jumperIdentity = {
+            coreGender: 'female',
+            attractedTo: ['women'],
+            aspirations: ['find_peace'],
+            strategies: ['shadow', 'shadow'],
+            deepSkills: ['lockpicking', 'disguise', 'stealth', 'sleight_of_hand', 'parkour']
+        };
+
+        // Sync skills to player
+        for (const skill of Game.state.jumperIdentity.deepSkills) {
+            Game.addDeepSkill(pid, skill);
+        }
+
+        // Verify deep skills on player
+        t.assert(Game.hasDeepSkill(pid, 'lockpicking'), 'Player should have lockpicking deep skill');
+        t.assert(Game.hasDeepSkill(pid, 'disguise'), 'Player should have disguise deep skill');
+        t.assert(Game.hasDeepSkill(pid, 'stealth'), 'Player should have stealth deep skill');
+        t.assert(Game.hasDeepSkill(pid, 'sleight_of_hand'), 'Player should have sleight_of_hand deep skill');
+        t.assert(Game.hasDeepSkill(pid, 'parkour'), 'Player should have parkour deep skill');
+    });
+
+    harness.runTest('JumperIdentity: creation module steps', (t) => {
+        // Verify JumperCreation module exists and has correct steps
+        t.assert(JumperCreation, 'JumperCreation module should exist');
+        t.assert(JumperCreation.steps, 'JumperCreation should have steps');
+        t.assertEqual(JumperCreation.steps.length, 8, 'Should have 8 steps');
+
+        // Verify step order
+        t.assertEqual(JumperCreation.steps[0].id, 'gender', 'First step is gender');
+        t.assertEqual(JumperCreation.steps[1].id, 'attraction', 'Second step is attraction');
+        t.assertEqual(JumperCreation.steps[2].id, 'aspiration', 'Third step is aspiration');
+        t.assertEqual(JumperCreation.steps[3].id, 'strategy1', 'Fourth step is strategy1');
+        t.assertEqual(JumperCreation.steps[4].id, 'skills1', 'Fifth step is skills1');
+        t.assertEqual(JumperCreation.steps[5].id, 'strategy2', 'Sixth step is strategy2');
+        t.assertEqual(JumperCreation.steps[6].id, 'skills2', 'Seventh step is skills2');
+        t.assertEqual(JumperCreation.steps[7].id, 'personal', 'Eighth step is personal');
+    });
+
+    harness.runTest('JumperIdentity: getAllSkillIds returns union of all strategy skills', (t) => {
+        const allSkills = JumperCreation.getAllSkillIds();
+
+        // Should include skills from multiple strategies
+        t.assert(allSkills.includes('stealth'), 'Should include stealth (shadow, runner)');
+        t.assert(allSkills.includes('hacking'), 'Should include hacking (operator)');
+        t.assert(allSkills.includes('unarmed'), 'Should include unarmed (blade)');
+        t.assert(allSkills.includes('parkour'), 'Should include parkour (runner)');
+        t.assert(allSkills.includes('deep_integration'), 'Should include deep_integration (mind)');
+
+        // Should not have duplicates
+        const uniqueSkills = new Set(allSkills);
+        t.assertEqual(allSkills.length, uniqueSkills.size, 'No duplicate skills');
+    });
+
+    harness.runTest('Thread: jumper identity persists, character creation repeats on jump', (t) => {
+        Game.init();
+
+        // === FIRST PLAYTHROUGH: Both jumper identity and character creation ===
+
+        // Initially at jumper_identity chapter
+        t.assertEqual(
+            Game.state.storylines['intro'].currentChapter,
+            'jumper_identity',
+            'First run: starts at jumper_identity'
+        );
+
+        // Set up jumper identity (simulating the creation flow)
+        Game.state.jumperIdentity = {
+            coreGender: 'female',
+            attractedTo: ['men', 'women'],
+            aspirations: ['find_peace'],
+            strategies: ['shadow', 'face'],
+            deepSkills: ['lockpicking', 'disguise', 'stealth', 'contract_negotiation', 'parkour']
+        };
+        for (const skill of Game.state.jumperIdentity.deepSkills) {
+            Game.addDeepSkill(Game.state.playerId, skill);
+        }
+        Game.setFlag('jumper_identity_created');
+        Game.evaluateStorylines();
+        Game.refreshDisplay();
+
+        // Should advance to character creation (start chapter)
+        t.assertEqual(
+            Game.state.storylines['intro'].currentChapter,
+            'start',
+            'First run: advanced to start (character creation)'
+        );
+
+        // Complete character creation
+        t.setRandomSequence([0.3, 0.3]); // For probabilistic effects
+        t.clickButton('Begin'); // startCharacterCreation
+        t.clickButton('High');  // combat
+        t.clickButton('Medium'); // affluence
+
+        // Should be at awakening now
+        t.assertEqual(
+            Game.state.storylines['intro'].currentChapter,
+            'awakening',
+            'First run: advanced to awakening'
+        );
+
+        // Capture identity for later comparison
+        const originalIdentity = { ...Game.state.jumperIdentity };
+        const firstCharStats = {
+            health: Game.getStat(Game.state.playerId, 'health'),
+            money: Game.getStat(Game.state.playerId, 'money')
+        };
+
+        // === SIMULATE A JUMP (player dies, new iteration) ===
+        // Reset storylines but preserve jumperIdentity
+        const preservedIdentity = Game.state.jumperIdentity;
+
+        // Reinit simulating a jump - in real game this would be a handler
+        // but we simulate by resetting specific state while preserving identity
+        Game.state.storylines = {};
+        Game.state.characters = {};
+        Game.state.flags = {};
+        Game.state.week = 1;
+
+        // Recreate player
+        Game.state.playerId = Game.createCharacter('player', 'You');
+
+        // Restore jumper identity (this is what persists across jumps)
+        Game.state.jumperIdentity = preservedIdentity;
+        Game.setFlag('jumper_identity_created'); // Already created
+
+        // Re-enter the intro story
+        Game.enterStory('intro');
+        Game.evaluateStorylines();
+        Game.refreshDisplay();
+
+        // === SECOND PLAYTHROUGH: Skip jumper identity, run character creation ===
+
+        // With jumper_identity_created flag, should skip to start chapter
+        t.assertEqual(
+            Game.state.storylines['intro'].currentChapter,
+            'start',
+            'Second run: skips to start (identity already exists)'
+        );
+
+        // Jumper identity should be preserved
+        t.assertEqual(
+            Game.state.jumperIdentity.coreGender,
+            originalIdentity.coreGender,
+            'Identity coreGender preserved across jump'
+        );
+        t.assertEqual(
+            Game.state.jumperIdentity.deepSkills.length,
+            originalIdentity.deepSkills.length,
+            'Identity deepSkills preserved across jump'
+        );
+
+        // Character creation should still run (new identity for this iteration)
+        t.setRandomSequence([0.3, 0.3]);
+        t.clickButton('Begin');
+        t.clickButton('Low');    // Different choices this time
+        t.clickButton('High');
+
+        // Should advance to awakening
+        t.assertEqual(
+            Game.state.storylines['intro'].currentChapter,
+            'awakening',
+            'Second run: advanced to awakening after character creation'
+        );
+
+        // New character has different stats (new identity)
+        const secondCharStats = {
+            health: Game.getStat(Game.state.playerId, 'health'),
+            money: Game.getStat(Game.state.playerId, 'money')
+        };
+        t.assert(
+            secondCharStats.health !== firstCharStats.health ||
+            secondCharStats.money !== firstCharStats.money,
+            'New character has different stats (new iteration identity)'
+        );
+
+        // But jumper identity is still the same
+        t.assertEqual(
+            Game.state.jumperIdentity.coreGender,
+            'female',
+            'Jumper identity still female'
+        );
+        t.assertEqual(
+            Game.state.jumperIdentity.strategies[0],
+            'shadow',
+            'Jumper strategies preserved'
+        );
     });
 
     // Print summary
