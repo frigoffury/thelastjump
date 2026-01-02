@@ -90,6 +90,8 @@ const Game = {
             templateType,
             name,
             stats,
+            skills: { general: {}, specific: {} },
+            deepSkills: [],
             gender: template?.gender || null,
             inventory: [],
             flags: {}
@@ -206,6 +208,61 @@ const Game = {
         if (def?.min != null) value = Math.max(def.min, value);
         if (def?.max != null) value = Math.min(def.max, value);
         char.stats[statName] = value;
+    },
+
+    // === Skills ===
+    getSkill(charId, skillName) {
+        const char = this.getCharacter(charId);
+        if (!char) return 0;
+        const def = typeof SkillDefinitions !== 'undefined' ? SkillDefinitions[skillName] : null;
+        if (!def) return 0;
+
+        if (def.type === 'general') {
+            return char.skills?.general?.[skillName] ?? 0;
+        } else {
+            // Specific skill: add to parent general
+            const specific = char.skills?.specific?.[skillName] ?? 0;
+            const general = char.skills?.general?.[def.parent] ?? 0;
+            return general + specific;
+        }
+    },
+
+    modifySkill(charId, skillName, delta) {
+        const char = this.getCharacter(charId);
+        const def = typeof SkillDefinitions !== 'undefined' ? SkillDefinitions[skillName] : null;
+        if (!char || !def) return;
+
+        const bucket = def.type === 'general' ? 'general' : 'specific';
+        if (!char.skills) char.skills = { general: {}, specific: {} };
+        if (!char.skills[bucket]) char.skills[bucket] = {};
+
+        char.skills[bucket][skillName] = (char.skills[bucket][skillName] ?? 0) + delta;
+    },
+
+    setSkill(charId, skillName, value) {
+        const char = this.getCharacter(charId);
+        const def = typeof SkillDefinitions !== 'undefined' ? SkillDefinitions[skillName] : null;
+        if (!char || !def) return;
+
+        const bucket = def.type === 'general' ? 'general' : 'specific';
+        if (!char.skills) char.skills = { general: {}, specific: {} };
+        if (!char.skills[bucket]) char.skills[bucket] = {};
+
+        char.skills[bucket][skillName] = value;
+    },
+
+    hasDeepSkill(charId, skillName) {
+        const char = this.getCharacter(charId);
+        return char?.deepSkills?.includes(skillName) ?? false;
+    },
+
+    addDeepSkill(charId, skillName) {
+        const char = this.getCharacter(charId);
+        if (!char) return;
+        if (!char.deepSkills) char.deepSkills = [];
+        if (!char.deepSkills.includes(skillName)) {
+            char.deepSkills.push(skillName);
+        }
     },
 
     // === Flags ===

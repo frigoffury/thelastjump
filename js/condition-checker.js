@@ -9,6 +9,8 @@
  *   inChapter: { storyId: 'chapterId' }       - must be in specific chapter(s)
  *   stat: ['statName', 'op', value]           - compare player stat
  *   charStat: ['charId', 'statName', 'op', value] - compare any character stat
+ *   skill: ['skillName', 'op', value]         - compare player skill (general+specific)
+ *   hasDeepSkill: 'skill' or ['skill1', ...]  - player has deep skill specialty
  *   hasObjectOfType: 'templateType'           - player owns object of type
  *   weekDivisibleBy: number                   - current week divisible by N
  *   minWeek: number                           - at least week N
@@ -72,6 +74,23 @@ const ConditionChecker = {
             const [charId, statName, op, value] = conditions.charStat;
             const current = game.getStat(charId, statName);
             if (!this.compare(current, op, value)) return false;
+        }
+
+        // skill: ['skillName', 'op', value] - player skill comparison
+        if (conditions.skill) {
+            const [skillName, op, value] = conditions.skill;
+            const current = game.getSkill(pid, skillName);
+            if (!this.compare(current, op, value)) return false;
+        }
+
+        // hasDeepSkill: 'skillName' or ['skill1', 'skill2'] - all must be present
+        if (conditions.hasDeepSkill != null) {
+            const skills = Array.isArray(conditions.hasDeepSkill)
+                ? conditions.hasDeepSkill
+                : [conditions.hasDeepSkill];
+            for (const skill of skills) {
+                if (!game.hasDeepSkill(pid, skill)) return false;
+            }
         }
 
         // weekDivisibleBy: number

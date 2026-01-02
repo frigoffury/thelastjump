@@ -199,6 +199,8 @@ function loadGameFiles() {
         Config: null,
         StatDefinitions: null,
         DisplayedStats: null,
+        SkillDefinitions: null,
+        AbilityChecks: null,
         CharacterTemplates: null,
         Genders: null,
         ObjectTemplates: null,
@@ -214,7 +216,8 @@ function loadGameFiles() {
         ConditionChecker: null,
         EffectExecutor: null,
         Handlers: null,
-        PursuitManager: null
+        PursuitManager: null,
+        AbilityChecker: null
     });
 
     const basePath = path.join(__dirname, '..');
@@ -222,6 +225,8 @@ function loadGameFiles() {
     const files = [
         'data/config.js',
         'data/stats.js',
+        'data/skills.js',
+        'data/ability-checks.js',
         'data/templates/characters.js',
         'data/templates/objects.js',
         'data/creation-choices.js',
@@ -231,6 +236,7 @@ function loadGameFiles() {
         'data/pursuits.js',
         'js/text-interpolation.js',
         'js/condition-checker.js',
+        'js/ability-checker.js',
         'js/effect-executor.js',
         'js/handlers.js',
         'js/character-creation.js',
@@ -917,6 +923,278 @@ function runTests() {
         delete context.Events['late_event'];
         delete context.Handlers['timedHandler'];
         delete context.Handlers['lateHandler'];
+    });
+
+    // ============================================================
+    // CONSOLIDATED: Skills & Ability Checks
+    // ============================================================
+
+    const AbilityChecker = context.AbilityChecker;
+
+    harness.runTest('Skills: storage and retrieval', (t) => {
+        Game.init();
+        const pid = Game.state.playerId;
+
+        // General skill default is 0
+        t.assertEqual(Game.getSkill(pid, 'computers'), 0, 'General skill defaults to 0');
+
+        // Set and get general skill
+        Game.modifySkill(pid, 'computers', 15);
+        t.assertEqual(Game.getSkill(pid, 'computers'), 15, 'General skill modified');
+
+        // Set specific skill - should add to parent
+        Game.modifySkill(pid, 'hacking', 10);
+        t.assertEqual(Game.getSkill(pid, 'hacking'), 25, 'Specific adds to parent (15 + 10)');
+
+        // Parent unchanged by specific
+        t.assertEqual(Game.getSkill(pid, 'computers'), 15, 'Parent unchanged');
+
+        // setSkill for absolute values
+        Game.setSkill(pid, 'athletics', 50);
+        t.assertEqual(Game.getSkill(pid, 'athletics'), 50, 'setSkill works');
+    });
+
+    harness.runTest('Skills: deep skills', (t) => {
+        Game.init();
+        const pid = Game.state.playerId;
+
+        // No deep skills initially
+        t.assert(!Game.hasDeepSkill(pid, 'hacking'), 'No deep skill initially');
+
+        // Add deep skill
+        Game.addDeepSkill(pid, 'hacking');
+        t.assert(Game.hasDeepSkill(pid, 'hacking'), 'Deep skill added');
+
+        // No duplicate
+        Game.addDeepSkill(pid, 'hacking');
+        const char = Game.getCharacter(pid);
+        t.assertEqual(char.deepSkills.length, 1, 'No duplicate deep skills');
+    });
+
+    harness.runTest('Skills: conditions', (t) => {
+        Game.init();
+        const pid = Game.state.playerId;
+
+        // skill condition
+        Game.modifySkill(pid, 'stealth', 30);
+        t.assert(ConditionChecker.check({ skill: ['stealth', '>=', 30] }, Game), 'Skill >= passes');
+        t.assert(!ConditionChecker.check({ skill: ['stealth', '>', 30] }, Game), 'Skill > fails');
+
+        // hasDeepSkill condition - single
+        t.assert(!ConditionChecker.check({ hasDeepSkill: 'parkour' }, Game), 'hasDeepSkill fails when missing');
+        Game.addDeepSkill(pid, 'parkour');
+        t.assert(ConditionChecker.check({ hasDeepSkill: 'parkour' }, Game), 'hasDeepSkill passes when present');
+
+        // hasDeepSkill condition - array (all must be present)
+        t.assert(!ConditionChecker.check({ hasDeepSkill: ['parkour', 'hacking'] }, Game), 'Array fails if any missing');
+        Game.addDeepSkill(pid, 'hacking');
+        t.assert(ConditionChecker.check({ hasDeepSkill: ['parkour', 'hacking'] }, Game), 'Array passes if all present');
+    });
+
+    harness.runTest('Skills: effects', (t) => {
+        Game.init();
+        const pid = Game.state.playerId;
+
+        // modifySkill effect
+        EffectExecutor.execute([{ modifySkill: ['persuasion', 20] }], Game);
+        t.assertEqual(Game.getSkill(pid, 'persuasion'), 20, 'modifySkill effect works');
+
+        // setSkill effect
+        EffectExecutor.execute([{ setSkill: ['persuasion', 5] }], Game);
+        t.assertEqual(Game.getSkill(pid, 'persuasion'), 5, 'setSkill effect works');
+
+        // addDeepSkill effect
+        EffectExecutor.execute([{ addDeepSkill: 'melee' }], Game);
+        t.assert(Game.hasDeepSkill(pid, 'melee'), 'addDeepSkill effect works');
+    });
+
+    harness.runTest('AbilityChecker: dice parsing and rolling', (t) => {
+        Game.init();
+
+        // Dice parsing
+        let parsed = AbilityChecker.parseDice('2d6');
+        t.assertEqual(parsed.count, 2, '2d6 count');
+        t.assertEqual(parsed.sides, 6, '2d6 sides');
+
+        parsed = AbilityChecker.parseDice('3d10');
+        t.assertEqual(parsed.count, 3, '3d10 count');
+        t.assertEqual(parsed.sides, 10, '3d10 sides');
+
+        // Invalid defaults to 1d20
+        parsed = AbilityChecker.parseDice('invalid');
+        t.assertEqual(parsed.count, 1, 'Invalid defaults to 1');
+        t.assertEqual(parsed.sides, 20, 'Invalid defaults to 20');
+
+        // Dice rolling with controlled random
+        t.setRandomSequence([0.5, 0.5]); // Each die: floor(0.5 * 6) + 1 = 4
+        const roll = AbilityChecker.rollDice('2d6', Game);
+        t.assertEqual(roll, 8, '2d6 with 0.5 random = 4+4 = 8');
+
+        // Average roll calculation
+        t.assertEqual(AbilityChecker.averageRoll('2d6'), 7, '2d6 average = 7');
+        t.assertEqual(AbilityChecker.averageRoll('1d20'), 10.5, '1d20 average = 10.5');
+    });
+
+    harness.runTest('AbilityChecker: check resolution', (t) => {
+        Game.init();
+        const pid = Game.state.playerId;
+
+        // String reference resolves to AbilityChecks
+        const resolved = AbilityChecker.resolveCheck('athletic_leap');
+        t.assertEqual(resolved.skill, 'parkour', 'String ref resolves');
+        t.assertEqual(resolved.difficulty, 50, 'Difficulty from definition');
+
+        // ref with override
+        const withOverride = AbilityChecker.resolveCheck({ ref: 'athletic_leap', difficulty: 70 });
+        t.assertEqual(withOverride.difficulty, 70, 'Override takes precedence');
+        t.assertEqual(withOverride.skill, 'parkour', 'Other fields preserved');
+
+        // Invalid ref returns null
+        const invalid = AbilityChecker.resolveCheck('nonexistent_check');
+        t.assertEqual(invalid, null, 'Invalid ref returns null');
+
+        // Inline definition passes through
+        const inline = AbilityChecker.resolveCheck({ skill: 'stealth', dice: '1d20', difficulty: 30 });
+        t.assertEqual(inline.skill, 'stealth', 'Inline passes through');
+    });
+
+    harness.runTest('AbilityChecker: validation', (t) => {
+        // Missing skill
+        let errors = AbilityChecker.validateCheck({ dice: '2d6', difficulty: 50 });
+        t.assert(errors.includes('Missing required field: skill'), 'Missing skill detected');
+
+        // Missing dice
+        errors = AbilityChecker.validateCheck({ skill: 'stealth', difficulty: 50 });
+        t.assert(errors.includes('Missing required field: dice'), 'Missing dice detected');
+
+        // Missing difficulty
+        errors = AbilityChecker.validateCheck({ skill: 'stealth', dice: '2d6' });
+        t.assert(errors.includes('Missing required field: difficulty'), 'Missing difficulty detected');
+
+        // Valid check
+        errors = AbilityChecker.validateCheck({ skill: 'stealth', dice: '2d6', difficulty: 50 });
+        t.assertEqual(errors.length, 0, 'Valid check has no errors');
+    });
+
+    harness.runTest('AbilityChecker: outcome tiers', (t) => {
+        Game.init();
+        const pid = Game.state.playerId;
+
+        // Set up skill value
+        Game.modifySkill(pid, 'stealth', 30);
+
+        // Roll 7 + skill 30 = 37 vs difficulty 40 = failure
+        t.setRandomSequence([0.5, 0.5]); // 2d6 = 8 total (floor(0.5*6)+1 = 4 each)
+        let result = AbilityChecker.check({ skill: 'stealth', dice: '2d6', difficulty: 40 }, Game);
+        t.assertEqual(result.outcome, 'failure', '38 < 40 = failure');
+
+        // Roll for success: need 40 - 30 = 10, max 2d6 = 12
+        t.setRandomSequence([0.83, 0.83]); // floor(0.83*6)+1 = 5+1 = 6 each = 12
+        result = AbilityChecker.check({ skill: 'stealth', dice: '2d6', difficulty: 40 }, Game);
+        t.assertEqual(result.outcome, 'success', '42 >= 40 = success');
+
+        // Crushing success with crushMargin
+        Game.modifySkill(pid, 'stealth', 20); // now 50
+        t.setRandomSequence([0.83, 0.83]); // 12
+        result = AbilityChecker.check({ skill: 'stealth', dice: '2d6', difficulty: 40, crushMargin: 15 }, Game);
+        t.assertEqual(result.outcome, 'crushingSuccess', '62 >= 55 = crushing');
+
+        // Crushing failure
+        Game.setSkill(pid, 'stealth', 5);
+        t.setRandomSequence([0, 0]); // floor(0*6)+1 = 1 each = 2
+        result = AbilityChecker.check({ skill: 'stealth', dice: '2d6', difficulty: 40, crushMargin: 15 }, Game);
+        t.assertEqual(result.outcome, 'crushingFailure', '7 < 25 = crushing failure');
+    });
+
+    harness.runTest('AbilityChecker: bonuses and modifiers', (t) => {
+        Game.init();
+        const pid = Game.state.playerId;
+
+        // Set up for bonus testing
+        Game.setSkill(pid, 'parkour', 10);
+        Game.setStat(pid, 'strength', 20);
+        Game.setStat(pid, 'health', 30); // Low health triggers modifiers
+
+        // Check with stat bonus: parkour 10 + strength*0.3 = 10 + 6 = 16
+        // Plus modifiers: health < 50 adds 10 to difficulty, health < 20 would add 15 more
+        // Roll 2d6 = 8 (with 0.5, 0.5)
+        // Total: 16 + 8 = 24 vs difficulty 50 + 10 (health mod) = 60
+        t.setRandomSequence([0.5, 0.5]);
+        const result = AbilityChecker.check('athletic_leap', Game);
+
+        t.assertEqual(result.effectiveDifficulty, 60, 'Modifier added 10 for low health');
+        t.assert(result.playerRoll < result.effectiveDifficulty, 'Should fail');
+    });
+
+    harness.runTest('AbilityChecker: deep memory bonus', (t) => {
+        Game.init();
+        const pid = Game.state.playerId;
+
+        // Set up skill
+        Game.setSkill(pid, 'hacking', 10);
+
+        // Without deep memory: 10 + roll
+        t.setRandomSequence([0.5, 0.5]); // roll = 8
+        let result = AbilityChecker.check(
+            { skill: 'hacking', dice: '2d6', difficulty: 30 },
+            Game,
+            false
+        );
+        t.assertEqual(result.skillValue, 10, 'No deep memory bonus');
+
+        // With deep memory but no specialty: +30 generic bonus
+        t.setRandomSequence([0.5, 0.5]);
+        result = AbilityChecker.check(
+            { skill: 'hacking', dice: '2d6', difficulty: 30 },
+            Game,
+            true
+        );
+        t.assertEqual(result.skillValue, 40, '+30 generic deep memory');
+
+        // With matching specialty: +100 bonus
+        Game.addDeepSkill(pid, 'hacking');
+        t.setRandomSequence([0.5, 0.5]);
+        result = AbilityChecker.check(
+            { skill: 'hacking', dice: '2d6', difficulty: 30 },
+            Game,
+            true
+        );
+        t.assertEqual(result.skillValue, 110, '+100 specialty deep memory');
+    });
+
+    harness.runTest('AbilityChecker: estimateOdds', (t) => {
+        Game.init();
+        const pid = Game.state.playerId;
+
+        // Very likely: margin >= 15
+        Game.setSkill(pid, 'stealth', 50);
+        let odds = AbilityChecker.estimateOdds({ skill: 'stealth', dice: '2d6', difficulty: 40 }, Game);
+        // Skill 50 + avg 7 = 57, margin = 17
+        t.assertEqual(odds, 'very likely', 'High skill = very likely');
+
+        // Likely: margin 5-15
+        Game.setSkill(pid, 'stealth', 40);
+        odds = AbilityChecker.estimateOdds({ skill: 'stealth', dice: '2d6', difficulty: 40 }, Game);
+        // 40 + 7 = 47, margin = 7
+        t.assertEqual(odds, 'likely', 'Moderate advantage = likely');
+
+        // Possible: margin -5 to 5
+        Game.setSkill(pid, 'stealth', 33);
+        odds = AbilityChecker.estimateOdds({ skill: 'stealth', dice: '2d6', difficulty: 40 }, Game);
+        // 33 + 7 = 40, margin = 0
+        t.assertEqual(odds, 'possible', 'Even = possible');
+
+        // Unlikely: margin -15 to -5
+        Game.setSkill(pid, 'stealth', 25);
+        odds = AbilityChecker.estimateOdds({ skill: 'stealth', dice: '2d6', difficulty: 40 }, Game);
+        // 25 + 7 = 32, margin = -8
+        t.assertEqual(odds, 'unlikely', 'Disadvantage = unlikely');
+
+        // Very unlikely: margin < -15
+        Game.setSkill(pid, 'stealth', 10);
+        odds = AbilityChecker.estimateOdds({ skill: 'stealth', dice: '2d6', difficulty: 40 }, Game);
+        // 10 + 7 = 17, margin = -23
+        t.assertEqual(odds, 'very unlikely', 'Large disadvantage = very unlikely');
     });
 
     // Print summary

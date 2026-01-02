@@ -9,6 +9,9 @@
  *   modifyStat: ['statName', delta]           - add delta to player stat
  *   setStat: ['statName', value]              - set player stat to value
  *   modifyCharStat: ['charId', 'stat', delta] - modify any character's stat
+ *   modifySkill: ['skillName', delta]         - add delta to player skill
+ *   setSkill: ['skillName', value]            - set player skill to value
+ *   addDeepSkill: 'skillName'                 - add deep skill specialty to player
  *   setCharFlag: ['charId', 'flag', value]    - set character-specific flag
  *   giveObject: { template, name, state }     - create and give object to player
  *   removeObjectOfType: 'templateType'        - remove first object of type
@@ -59,6 +62,23 @@ const EffectExecutor = {
             if (effect.modifyCharStat != null) {
                 const [charId, stat, delta] = effect.modifyCharStat;
                 game.modifyStat(charId, stat, delta);
+            }
+
+            // modifySkill: ['skillName', delta]
+            if (effect.modifySkill != null) {
+                const [skillName, delta] = effect.modifySkill;
+                game.modifySkill(pid, skillName, delta);
+            }
+
+            // setSkill: ['skillName', value]
+            if (effect.setSkill != null) {
+                const [skillName, value] = effect.setSkill;
+                game.setSkill(pid, skillName, value);
+            }
+
+            // addDeepSkill: 'skillName'
+            if (effect.addDeepSkill != null) {
+                game.addDeepSkill(pid, effect.addDeepSkill);
             }
 
             // setCharFlag: ['charId', 'flagName', value]
