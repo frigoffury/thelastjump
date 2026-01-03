@@ -7,6 +7,9 @@
  */
 
 const AbilityChecker = {
+    // Last check result for debug display
+    lastResult: null,
+
     // Parse dice notation "2d6" -> { count: 2, sides: 6 }
     parseDice(notation) {
         const match = notation.match(/(\d+)d(\d+)/);
@@ -140,18 +143,24 @@ const AbilityChecker = {
         const { skill, dice, difficulty, crushMargin, bonuses, modifiers } = abilityCheck;
 
         // Base skill value
-        let playerValue = game.getSkill(pid, skill);
+        const baseSkillValue = game.getSkill(pid, skill);
+        let playerValue = baseSkillValue;
 
         // Deep memory bonus
+        let deepMemoryBonus = 0;
         if (useDeepMemory) {
-            playerValue += game.hasDeepSkill(pid, skill) ? 100 : 30;
+            deepMemoryBonus = game.hasDeepSkill(pid, skill) ? 100 : 30;
+            playerValue += deepMemoryBonus;
         }
 
         // Add bonuses from stats
+        const appliedBonuses = [];
         if (bonuses) {
             for (const bonus of bonuses) {
                 const statValue = game.getStat(pid, bonus.stat);
-                playerValue += Math.floor(statValue * (bonus.scale ?? 1));
+                const bonusValue = Math.floor(statValue * (bonus.scale ?? 1));
+                playerValue += bonusValue;
+                appliedBonuses.push({ stat: bonus.stat, value: bonusValue });
             }
         }
 
@@ -160,13 +169,16 @@ const AbilityChecker = {
         const playerRoll = playerValue + roll;
 
         // Calculate effective difficulty
-        let effectiveDifficulty = this.resolveDifficulty(difficulty, game);
+        const baseDifficulty = this.resolveDifficulty(difficulty, game);
+        let effectiveDifficulty = baseDifficulty;
 
         // Apply modifiers (conditions that adjust difficulty)
+        const appliedModifiers = [];
         if (modifiers && typeof ConditionChecker !== 'undefined') {
             for (const mod of modifiers) {
                 if (ConditionChecker.check(mod.condition, game)) {
                     effectiveDifficulty += mod.add;
+                    appliedModifiers.push({ condition: mod.condition, add: mod.add });
                 }
             }
         }
@@ -183,14 +195,27 @@ const AbilityChecker = {
             outcome = 'failure';
         }
 
-        return {
+        const result = {
             outcome,
             playerRoll,
             effectiveDifficulty,
+            baseDifficulty,
             roll,
             skillValue: playerValue,
-            margin: playerRoll - effectiveDifficulty
+            baseSkillValue,
+            margin: playerRoll - effectiveDifficulty,
+            skill,
+            dice,
+            useDeepMemory,
+            deepMemoryBonus,
+            appliedBonuses,
+            appliedModifiers
         };
+
+        // Store for debug display
+        this.lastResult = result;
+
+        return result;
     },
 
     // Estimate odds before a check (for UI display)

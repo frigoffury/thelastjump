@@ -8,6 +8,11 @@ document.addEventListener('DOMContentLoaded', () => {
         SaveManager.init();
     }
 
+    // Initialize debug panel (backtick to toggle)
+    if (typeof DebugPanel !== 'undefined') {
+        DebugPanel.init();
+    }
+
     // Show startup screen if saves exist, otherwise start new game
     if (typeof SaveManager !== 'undefined' && Game.hasSave()) {
         SaveManager.showStartupScreen(

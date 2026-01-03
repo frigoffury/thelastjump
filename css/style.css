@@ -381,6 +381,49 @@ body {
     font-size: 0.85rem;
 }
 
+/* Debug Panel */
+.debug-content {
+    max-width: 500px;
+    font-size: 0.9rem;
+}
+
+.debug-content h3 {
+    color: #e94560;
+    font-size: 0.95rem;
+    margin: 1rem 0 0.5rem 0;
+    border-bottom: 1px solid #333;
+    padding-bottom: 0.25rem;
+}
+
+.debug-content h3:first-of-type {
+    margin-top: 0;
+}
+
+.debug-section {
+    margin-bottom: 0.5rem;
+}
+
+.debug-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.debug-table td {
+    padding: 0.2rem 0.5rem;
+    vertical-align: top;
+}
+
+.debug-table td:first-child {
+    color: #888;
+    width: 40%;
+}
+
+.debug-table td:last-child {
+    color: #ddd;
+    word-break: break-word;
+}
+
 @media (max-width: 700px) {
     #game-container {
         grid-template-columns: 1fr;

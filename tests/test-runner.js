@@ -1161,6 +1161,14 @@ function runTests() {
 
         t.assertEqual(result.effectiveDifficulty, 60, 'Modifier added 10 for low health');
         t.assert(result.playerRoll < result.effectiveDifficulty, 'Should fail');
+
+        // Debug: lastResult stores detailed breakdown
+        t.assertEqual(AbilityChecker.lastResult, result, 'lastResult stores check result');
+        t.assertEqual(result.baseDifficulty, 50, 'baseDifficulty stored');
+        t.assertEqual(result.appliedBonuses.length, 1, 'appliedBonuses tracked');
+        t.assertEqual(result.appliedBonuses[0].stat, 'strength', 'Bonus stat tracked');
+        t.assertEqual(result.appliedModifiers.length, 1, 'appliedModifiers tracked');
+        t.assertEqual(result.appliedModifiers[0].add, 10, 'Modifier value tracked');
     });
 
     harness.runTest('AbilityChecker: deep memory bonus', (t) => {
